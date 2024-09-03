@@ -59,9 +59,11 @@
         @group(0) @binding(0) var<storage, read_write> new_faces: array<vec3f>;
         /* input */
         @group(0) @binding(1) var<storage, read> base_faces: array<vec3f>;
+          /*
         @group(0) @binding(2) var<storage, read> base_vertex_positions: array<vec3f>;
         @group(0) @binding(3) var<storage, read> base_offset: array<u32>;
         @group(0) @binding(4) var<storage, read> base_valence: array<u32>;
+          */
 
         @compute @workgroup_size(1) fn facePointsKernel(
           @builtin(global_invocation_id) id: vec3u) {
@@ -132,9 +134,10 @@
         entries: [
           { binding: 0, resource: { buffer: new_faces_buffer } },
           { binding: 1, resource: { buffer: base_faces_buffer } },
+          /*
           { binding: 2, resource: { buffer: base_vertex_positions_buffer } },
           { binding: 3, resource: { buffer: base_offset_buffer } },
-          { binding: 4, resource: { buffer: base_valence_buffer } },
+          { binding: 4, resource: { buffer: base_valence_buffer } }, */
         ],
       });
 
@@ -151,7 +154,7 @@
       pass.end();
 
       // Encode a command to copy the results to a mappable buffer.
-      encoder.copyBufferToBuffer(mappable_result_buffer, 0, new_faces_buffer, 0, new_faces_buffer.size);
+      encoder.copyBufferToBuffer(new_faces_buffer, 0, mappable_result_buffer, 0, mappable_result_buffer.size);
 
       // Finish encoding and submit the commands
       const commandBuffer = encoder.finish();
