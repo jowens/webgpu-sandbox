@@ -20,13 +20,14 @@
       }
 
       const base_vertices = new Uint32Array([0, 1, 2, 3, 4]);
-      // note the following are float3s (x, y, z)
+      // note the following are float4s (x, y, z, w) but we will ignore w for now
+      // doing this as float3s seemed fraught with peril b/c padding etc.
       const base_vertex_positions = new Float32Array([
-        0, 0, 1,   // vertex 0
-        -1, 1, 0,  // vertex 1
-        -1, -1, 0, // vertex 2
-        1, -1, 0,  // vertex 3
-        1, 1, 0    // vertex 4
+        0, 0, 1, 1,  // vertex 0
+        -1, 1, 0, 1, // vertex 1
+        -1, -1, 0, 1, // vertex 2
+        1, -1, 0, 1, // vertex 3
+        1, 1, 0, 1    // vertex 4
       ]);
       // Q: Is a flattened 1D array the right way to represent base faces?
       const base_faces = new Uint32Array([
@@ -69,6 +70,7 @@
         @compute @workgroup_size(1) fn facePointsKernel(
           @builtin(global_invocation_id) id: vec3u) {
             let i = id.x;
+            /* TODO: exit if my index is larger than the size of the input */
             /* initial kernel: just copy input faces to output faces */
             new_faces[i] = base_vertex_positions[i];
         }
@@ -116,14 +118,14 @@
       // now the output buffer
       const new_faces_buffer = device.createBuffer({
         label: 'new faces',
-        size: base_faces.byteLength, /* TODO: should this be dynamic, etc.? */
+        size: base_vertex_positions.byteLength, /* TODO: should this be dynamic, etc.? */
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
       });
 
-      // and the mappable output buffer (TODO: understand need for this)
+      // and the mappable output buffer (I believe that "mappable" is the only way to read from GPU->CPU)
       const mappable_result_buffer = device.createBuffer({
         label: 'mappable result buffer',
-        size: base_faces.byteLength,
+        size: base_vertex_positions.byteLength,
         usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
       });
 
