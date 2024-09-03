@@ -23,10 +23,10 @@
       // note the following are float4s (x, y, z, w) but we will ignore w for now
       // doing this as float3s seemed fraught with peril b/c padding etc.
       const base_vertex_positions = new Float32Array([
-        0, 0, 1, 1,  // vertex 0
-        -1, 1, 0, 1, // vertex 1
+        0, 0, 1, 1,   // vertex 0
+        -1, 1, 0, 1,  // vertex 1
         -1, -1, 0, 1, // vertex 2
-        1, -1, 0, 1, // vertex 3
+        1, -1, 0, 1,  // vertex 3
         1, 1, 0, 1    // vertex 4
       ]);
       // Q: Is a flattened 1D array the right way to represent base faces?
@@ -49,8 +49,7 @@
       // parallel for i in [0 .. base_valence.length]:
       //   new_faces[i] = [0,0,0]
       //   for j in [base_offset[i] .. base_offset[i] + base_valence[i]]:
-      //     vertex_position = base_faces[j]   // get 3 floats
-      //     new_faces[i] += base_vertex_positions[vertex_position]
+      //     new_faces[i] += base_vertex_positions[j]
       //   new_faces[i] /= base_valence[i]
 
       const facePointsModule = device.createShaderModule({
@@ -60,22 +59,36 @@
         @group(0) @binding(0) var<storage, read_write> new_faces: array<vec3f>;
         /* input */
         @group(0) @binding(1) var<storage, read> base_vertex_positions: array<vec3f>;
-          /* TODO: probably switch (1) and (2) for ordering */
-            /*
-        @group(0) @binding(2) var<storage, read> base_faces: array<vec3u>;
+        /* TODO: probably switch (1) and (2) for ordering */
+        @group(0) @binding(2) var<storage, read> base_faces: array<u32>;
         @group(0) @binding(3) var<storage, read> base_offset: array<u32>;
         @group(0) @binding(4) var<storage, read> base_valence: array<u32>;
-          */
 
         @compute @workgroup_size(1) fn facePointsKernel(
           @builtin(global_invocation_id) id: vec3u) {
             let i = id.x;
             /* TODO: exit if my index is larger than the size of the input */
-            /* initial kernel: just copy input faces to output faces */
-            new_faces[i] = base_vertex_positions[i];
+            /* test kernel: just copy input faces to output faces */
+            /* new_faces[i] = base_vertex_positions[i]; */
+
+            var new_face_position: vec3f = vec3f(0,0,0);
+            // let v = base_vertices[i]; // maybe a base vertices lookup here?
+            for (var j: u32 = base_offset[i]; j < base_offset[i] + base_valence[i]; j++) {
+              let face_vertex = base_faces[j];
+              // maybe a base_vertices lookup here?
+              new_faces[i] += base_vertex_positions[face_vertex];
+            }
+            new_faces[i] /= f32(base_valence[i]);
         }
       `,
       });
+
+      // output vertices, for debugging:
+      // [-0.6666666865348816, 0, 0.3333333432674408, 0]
+      // [0, -0.6666666865348816, 0.3333333432674408, 0]
+      // [0.6666666865348816, 0, 0.3333333432674408, 0]
+      // [0, 0.6666666865348816, 0.3333333432674408, 0]
+      // [0, 0, 0, 0]
 
       const pipeline = device.createComputePipeline({
         label: 'face points compute pipeline',
@@ -137,10 +150,9 @@
         entries: [
           { binding: 0, resource: { buffer: new_faces_buffer } },
           { binding: 1, resource: { buffer: base_vertex_positions_buffer } },
-          /*
           { binding: 2, resource: { buffer: base_faces_buffer } },
           { binding: 3, resource: { buffer: base_offset_buffer } },
-          { binding: 4, resource: { buffer: base_valence_buffer } }, */
+          { binding: 4, resource: { buffer: base_valence_buffer } },
         ],
       });
 
