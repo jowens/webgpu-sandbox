@@ -36,7 +36,8 @@
          * location of the control points." */
 
         /** Initial test is a 5-face rectangular pyramid, which has 23 resulting elements
-         * after a single subdivision. Only the first 5 points must be populated. */
+         * after a single subdivision. Only the first 5 points must be populated in
+         * the vertices buffer. */
 
         const vertices_size = 23;
         const vertices_object_size = 4; // float4s (but ignore w coord for now)
@@ -66,13 +67,13 @@
           0, 2, 3, //         ... face 1
           0, 3, 4, //         ... face 2
           0, 4, 1, //         ... face 3
-          4, 3, 2, 1, //         ... face 4
+          4, 3, 2, 1, //      ... face 4
         ]);
-        const base_valence = new Uint32Array([3, 3, 3, 3, 4]);
-        // base_offset is exclusive_scan('+', base_valence)
+        const base_face_valence = new Uint32Array([3, 3, 3, 3, 4]);
+        // base_face_offset is exclusive_scan('+', base_face_valence)
         // TODO: compute that scan in a compute shader
-        const base_offset = new Uint32Array([0, 3, 6, 9, 12]);
-        const base_faces_count = base_valence.length;
+        const base_face_offset = new Uint32Array([0, 3, 6, 9, 12]);
+        const base_faces_count = base_face_valence.length;
 
         // prettier-ignore
         const base_edges = new Uint32Array([
@@ -89,14 +90,14 @@
         const base_edges_count = base_edges.length / edges_object_size;
 
         /** (1) Calculation of face points
-         * Number of faces: base_valence.length
+         * Number of faces: base_face_valence.length
          * for each face: new face point = centroid(vertices of current face)
          * Pseudocode:   (note math operations are on vec3f's)
-         * parallel for i in [0 .. base_valence.length]:
+         * parallel for i in [0 .. base_face_valence.length]:
          *   new_faces[i] = [0,0,0]
-         *   for j in [base_offset[i] .. base_offset[i] + base_valence[i]]:
+         *   for j in [base_face_offset[i] .. base_face_offset[i] + base_face_valence[i]]:
          *     new_faces[i] += base_vertex_positions[base_faces[j]
-         *   new_faces[i] /= base_valence[i]
+         *   new_faces[i] /= base_face_valence[i]
          */
 
         const facePointsModule = device.createShaderModule({
@@ -106,18 +107,19 @@
         @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
         /* input */
         @group(0) @binding(1) var<storage, read> base_faces: array<u32>;
-        @group(0) @binding(2) var<storage, read> base_offset: array<u32>;
-        @group(0) @binding(3) var<storage, read> base_valence: array<u32>;
+        @group(0) @binding(2) var<storage, read> base_face_offset: array<u32>;
+        @group(0) @binding(3) var<storage, read> base_face_valence: array<u32>;
 
-        // Niessner 2012:
-        // "The face kernel requires two buffers: one index buffer, whose
-        // entries are the vertex buffer indices for each vertex of the face; a
-        // second buffer stores the valence of the face along with an offset
-        // into the index buffer for the first vertex of each face."
-        //
-        // implementation above: "index buffer" is base_faces
-        //                       "valence of the face" is base_valence
-        //                       "offset into the index buffer" is base_offset
+        /** Niessner 2012:
+         * "The face kernel requires two buffers: one index buffer, whose
+         * entries are the vertex buffer indices for each vertex of the face; a
+         * second buffer stores the valence of the face along with an offset
+         * into the index buffer for the first vertex of each face."
+         *
+         * implementation above: "index buffer" is base_faces
+         *                       "valence of the face" is base_face_valence
+         *                       "offset into the index buffer" is base_face_offset
+         */
 
         @compute @workgroup_size(1) fn facePointsKernel(
           @builtin(global_invocation_id) id: vec3u) {
@@ -126,11 +128,11 @@
 
             let out = i + ${vertices_write_ptr};
             vertices[out] = vec3f(0,0,0);
-            for (var j: u32 = base_offset[i]; j < base_offset[i] + base_valence[i]; j++) {
+            for (var j: u32 = base_face_offset[i]; j < base_face_offset[i] + base_face_valence[i]; j++) {
               let face_vertex = base_faces[j];
               vertices[out] += vertices[face_vertex];
             }
-            vertices[out] /= f32(base_valence[i]);
+            vertices[out] /= f32(base_face_valence[i]);
             // TODO: decide on vec3f or vec4f and set w if so
         }
       `,
@@ -163,10 +165,11 @@
         /* input */
         @group(0) @binding(1) var<storage, read> base_edges: array<vec4u>;
 
-        // Since a single (non-boundary) edge always has two incident faces and vertices,
-        // the edge kernel needs a buffer for the indices of these entities.
-        //
-        // implementation above: "a buffer for the indices of these entities" is base_edges
+        /** "Since a single (non-boundary) edge always has two incident faces and vertices,
+         * the edge kernel needs a buffer for the indices of these entities."
+         *
+         * implementation above: "a buffer for the indices of these entities" is base_edges
+         */
 
         @compute @workgroup_size(1) fn edgePointsKernel(
           @builtin(global_invocation_id) id: vec3u) {
@@ -195,6 +198,60 @@
          * 17 | 0, 0.6666666865348816, 0.0833333358168602, 0
          */
 
+        /** (3) Calculation of vertex points
+         * This is more involved. References:
+         * - https://www.rorydriscoll.com/2008/08/01/catmull-clark-subdivision-the-basics/
+         * - https://en.wikipedia.org/wiki/Catmull%E2%80%93Clark_subdivision_surface
+         * Big picture:
+         * - n is valence of this point
+         * - F is the average of all neighboring faces (new face points)
+         * - Ve is the average of the other endpoint of all incident edges
+         *   - F and Ve are just listed in the base_vertices table
+         * - V is this vertex
+         *   - Output is (F + Ve + (n-2) V) / n
+         * - If F and Ve points are f_0, f_1, Ve_0, ...:
+         *   - Output is [(f_0 + f_1 + ... + Ve_0 + Ve_1 + ...) / n _ (n-2) V] / n
+         * Number of vertex points: base_vertex_valence.length
+         * Pseudocode:   (note math operations are on vec3f's)
+         * parallel for i in [0 .. base_vertex_valence.length]:
+         *   new_vertices[i] = [0,0,0]
+         *   for j in [base_vertex_offset[i] .. base_vertex_offset[i] + base_vertex_valence[i]]:
+         *     new_vertex[i] += vertices[base_vertices[j]]
+         *   new_vertex[i] /= base_vertex_valence[i]
+         *   new_vertex[i] += (n-2) * base_vertex_index[i]
+         *   new_vertex[i] /= base_vertex_valence[i]
+         */
+
+        const vertexPointsModule = device.createShaderModule({
+          label: "vertex points module",
+          code: /*wgsl*/ `
+        /* input + output */
+        @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
+        /* input */
+        @group(0) @binding(1) var<storage, read> base_vertices: array<u32>;
+
+        /** "We use an index buffer containing the indicies of the incident edge and
+         * vertex points."
+         *
+         * implementation above: "a buffer for the indices of these entities" is base_edges
+         */
+
+        @compute @workgroup_size(1) fn vertexPointsKernel(
+          @builtin(global_invocation_id) id: vec3u) {
+            let i = id.x;
+            /* TODO: exit if my index is larger than the size of the input */
+
+            let out = i + ${vertices_write_ptr};
+            let edge_id = i;
+            vertices[out] = vec3f(0,0,0);
+            for (var j: u32 = 0; j < 4; j++) {
+              // vertices[out] += vertices[base_edges[edge_id][j]];
+            }
+            vertices[out] *= 0.25;
+        }
+      `,
+        });
+
         const face_pipeline = device.createComputePipeline({
           label: "face points compute pipeline",
           layout: "auto",
@@ -208,6 +265,14 @@
           layout: "auto",
           compute: {
             module: edgePointsModule,
+          },
+        });
+
+        const vertex_pipeline = device.createComputePipeline({
+          label: "vertex points compute pipeline",
+          layout: "auto",
+          compute: {
+            module: vertexPointsModule,
           },
         });
 
@@ -227,19 +292,23 @@
         });
         device.queue.writeBuffer(base_edges_buffer, 0, base_edges);
 
-        const base_offset_buffer = device.createBuffer({
+        const base_face_offset_buffer = device.createBuffer({
           label: "base offset",
-          size: base_offset.byteLength,
+          size: base_face_offset.byteLength,
           usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
-        device.queue.writeBuffer(base_offset_buffer, 0, base_offset);
+        device.queue.writeBuffer(base_face_offset_buffer, 0, base_face_offset);
 
-        const base_valence_buffer = device.createBuffer({
+        const base_face_valence_buffer = device.createBuffer({
           label: "base valence",
-          size: base_valence.byteLength,
+          size: base_face_valence.byteLength,
           usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
-        device.queue.writeBuffer(base_valence_buffer, 0, base_valence);
+        device.queue.writeBuffer(
+          base_face_valence_buffer,
+          0,
+          base_face_valence
+        );
 
         // vertex buffer is both input and output
         const vertices_buffer = device.createBuffer({
@@ -266,8 +335,8 @@
           entries: [
             { binding: 0, resource: { buffer: vertices_buffer } },
             { binding: 1, resource: { buffer: base_faces_buffer } },
-            { binding: 2, resource: { buffer: base_offset_buffer } },
-            { binding: 3, resource: { buffer: base_valence_buffer } },
+            { binding: 2, resource: { buffer: base_face_offset_buffer } },
+            { binding: 3, resource: { buffer: base_face_valence_buffer } },
           ],
         });
 
