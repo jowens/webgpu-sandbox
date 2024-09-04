@@ -42,7 +42,7 @@
 
       const vertices_size = 23;
       const vertices_object_size = 4; // float4s (but ignore w coord for now)
-                                           // float3s were fraught with peril (padding)
+      // float3s were fraught with peril (padding)
       const vertices = new Float32Array(vertices_size * vertices_object_size);
 
       const base_vertex_positions = new Float32Array([
@@ -72,6 +72,20 @@
       // base_offset is exclusive_scan('+', base_valence)
       // TODO: compute that scan in a compute shader
       const base_offset = new Uint32Array([0, 3, 6, 9, 12]);
+      const base_faces_count = base_valence.length;
+
+      const base_edges = new Uint32Array([
+        0, 5, 2, 6,
+        1, 5, 0, 8,
+        2, 5, 1, 9,
+        0, 6, 3, 7,
+        3, 6, 2, 9,
+        0, 7, 4, 8,
+        4, 7, 3, 9,
+        1, 8, 4, 9,
+      ]);
+      const edges_object_size = 4; // (two faces, two edges)
+      const base_edges_count = base_edges.length / edges_object_size;
 
       // (1) Calculation of face points
       // Number of faces: base_valence.length
@@ -120,6 +134,8 @@
       `,
       });
 
+      vertices_write_ptr += base_faces_count;
+
       // output vertices from face kernel, for debugging:
       // [-0.6666666865348816, 0, 0.3333333432674408, 0]
       // [0, -0.6666666865348816, 0.3333333432674408, 0]
@@ -128,41 +144,53 @@
       // [0, 0, 0, 0]
 
       // (2) Calculation of edge points
-      // Number of edges: ?.length
+      // Number of edges: base_edges.length
       // for each edge: new edge point = average(2 neighboring face points, 2 endpoints of edge)
       // Pseudocode:   (note math operations are on vec3f's)
       // parallel for i in [0 .. ?.length]:
-      //   new_edges[i] = 0.25 * (
-      //
-      //                         )
-
+      //   new_edges[i] = 0.25 * ( vertices[edge_id] + vertices[edge_id + 1] +
+      //                           vertices[edge_id + 2] + vertices[edge_id + 3])
 
       const edgePointsModule = device.createShaderModule({
         label: 'edge points module',
         code: /*wgsl*/`
-        /* output */
-        @group(0) @binding(0) var<storage, read_write> new_faces: array<vec3f>;
+        /* input + output */
+        @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
         /* input */
-        @group(0) @binding(1) var<storage, read> base_vertex_positions: array<vec3f>;
-        /* TODO: probably switch (1) and (2) for ordering */
-        @group(0) @binding(2) var<storage, read> base_faces: array<u32>;
-        @group(0) @binding(3) var<storage, read> base_offset: array<u32>;
-        @group(0) @binding(4) var<storage, read> base_valence: array<u32>;
+        @group(0) @binding(1) var<storage, read> base_edges: array<vec4u>;
 
         // Since a single (non-boundary) edge always has two incident faces and vertices,
         // the edge kernel needs a buffer for the indices of these entities.
         //
-        // implementation above: "index buffer" is base_faces
-        //                       "valence of the face" is base_valence
-        //                       "offset into the index buffer" is base_offset
+        // implementation above: "a buffer for the indices of these entities" is base_edges
 
         @compute @workgroup_size(1) fn edgePointsKernel(
           @builtin(global_invocation_id) id: vec3u) {
+            let i = id.x;
+            /* TODO: exit if my index is larger than the size of the input */
+
+            let out = i + ${vertices_write_ptr};
+            let edge_id = i;
+            vertices[out] = vec3f(0,0,0);
+            for (var j: u32 = 0; j < 4; j++) {
+              vertices[out] += vertices[base_edges[edge_id][j]];
+            }
+            vertices[out] *= 0.25;
         }
       `,
       });
 
-      const pipeline = device.createComputePipeline({
+      // output "edge" vertices from edge kernel, for debugging
+      // 10 | -0.4166666865348816, -0.4166666865348816, 0.4166666865348816, 0
+      // 11 | -0.4166666865348816, 0.4166666865348816, 0.4166666865348816, 0
+      // 12 | -0.6666666865348816, 0, 0.0833333358168602, 0
+      // 13 | 0.4166666865348816, -0.4166666865348816, 0.4166666865348816, 0
+      // 14 | 0, -0.6666666865348816, 0.0833333358168602, 0
+      // 15 | 0.4166666865348816, 0.4166666865348816, 0.4166666865348816, 0
+      // 16 | 0.6666666865348816, 0, 0.0833333358168602, 0
+      // 17 | 0, 0.6666666865348816, 0.0833333358168602, 0
+
+      const face_pipeline = device.createComputePipeline({
         label: 'face points compute pipeline',
         layout: 'auto',
         compute: {
@@ -170,8 +198,16 @@
         },
       });
 
+      const edge_pipeline = device.createComputePipeline({
+        label: 'edge points compute pipeline',
+        layout: 'auto',
+        compute: {
+          module: edgePointsModule,
+        },
+      });
+
       // create buffers on the GPU to hold data
-      // start with inputs
+      // read-only inputs:
       const base_faces_buffer = device.createBuffer({
         label: 'base faces buffer',
         size: base_faces.byteLength,
@@ -179,12 +215,12 @@
       });
       device.queue.writeBuffer(base_faces_buffer, 0, base_faces);
 
-      const vertices_buffer = device.createBuffer({
-        label: 'vertex buffer',
-        size: vertices.byteLength,
-        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+      const base_edges_buffer = device.createBuffer({
+        label: 'base edges buffer',
+        size: base_edges.byteLength,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
       });
-      device.queue.writeBuffer(vertices_buffer, 0, vertices);
+      device.queue.writeBuffer(base_edges_buffer, 0, base_edges);
 
       const base_offset_buffer = device.createBuffer({
         label: 'base offset',
@@ -200,6 +236,14 @@
       });
       device.queue.writeBuffer(base_valence_buffer, 0, base_valence);
 
+      // vertex buffer is both input and output
+      const vertices_buffer = device.createBuffer({
+        label: 'vertex buffer',
+        size: vertices.byteLength,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+      });
+      device.queue.writeBuffer(vertices_buffer, 0, vertices);
+
       // and the mappable output buffer (I believe that "mappable" is the only way to read from GPU->CPU)
       const mappable_result_buffer = device.createBuffer({
         label: 'mappable result buffer',
@@ -207,11 +251,11 @@
         usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
       });
 
-      // Setup a face bindGroup to tell the shader which
-      // buffers to use for the face computation
+      // Set up bindGroups per compute kernel to tell the shader which
+      // buffers to use
       const face_bindGroup = device.createBindGroup({
         label: 'bindGroup for face kernel',
-        layout: pipeline.getBindGroupLayout(0),
+        layout: face_pipeline.getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: { buffer: vertices_buffer } },
           { binding: 1, resource: { buffer: base_faces_buffer } },
@@ -220,17 +264,34 @@
         ],
       });
 
+      const edge_bindGroup = device.createBindGroup({
+        label: 'bindGroup for edge kernel',
+        layout: edge_pipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: vertices_buffer } },
+          { binding: 1, resource: { buffer: base_edges_buffer } },
+        ],
+      });
+
       // Encode commands to do the computation
       const encoder = device.createCommandEncoder({
-        label: 'face kernel encoder',
+        label: 'overall computation (face, edge) encoder',
       });
-      const pass = encoder.beginComputePass({
+      const face_pass = encoder.beginComputePass({
         label: 'face kernel compute pass',
       });
-      pass.setPipeline(pipeline);
-      pass.setBindGroup(0, face_bindGroup);
-      pass.dispatchWorkgroups(base_vertex_count);
-      pass.end();
+      face_pass.setPipeline(face_pipeline);
+      face_pass.setBindGroup(0, face_bindGroup);
+      face_pass.dispatchWorkgroups(base_vertex_count);
+      face_pass.end();
+
+      const edge_pass = encoder.beginComputePass({
+        label: 'edge kernel compute pass',
+      });
+      edge_pass.setPipeline(edge_pipeline);
+      edge_pass.setBindGroup(0, edge_bindGroup);
+      edge_pass.dispatchWorkgroups(base_edges_count);
+      edge_pass.end();
 
       // Encode a command to copy the results to a mappable buffer.
       // this is (from, to)
