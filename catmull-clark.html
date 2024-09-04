@@ -66,6 +66,18 @@
           0, 4, 1, //         ... face 3
           4, 3, 2, 1, //      ... face 4
         ]);
+        // the following is manually generated tri indexes from base_faces
+        // TODO: this could totally be generated programmatically from
+        //   base_faces plus base_face_valence
+        // prettier-ignore
+        const base_triangle_indices = new Uint32Array([
+          0, 1, 2, // vertices in tri 0
+          0, 2, 3, //         ... tri 1
+          0, 3, 4, //         ... tri 2
+          0, 4, 1, //         ... tri 3
+          4, 3, 2, //         ... tri 4
+          4, 2, 1, //         ... tri 5
+        ]);
         const base_face_valence = new Uint32Array([3, 3, 3, 3, 4]);
         // base_face_offset is exclusive_scan('+', base_face_valence)
         // TODO: compute that scan in a compute shader
@@ -251,7 +263,7 @@
         @group(0) @binding(3) var<storage, read> base_vertex_valence: array<u32>;
         @group(0) @binding(4) var<storage, read> base_vertex_index: array<u32>;
 
-        /** "We use an index buffer containing the indicies of the incident edge and
+        /** "We use an index buffer containing the indices of the incident edge and
          * vertex points."
          *
          * implementation above: "a buffer for the indices of these entities" is base_vertices
@@ -265,7 +277,7 @@
             let out = i + ${vertices_write_ptr};
             let valence = base_vertex_valence[i];
             vertices[out] = vec3f(0,0,0);
-            for (var j: u32 = base_vertex_offset[i]; j < base_vertex_offset[i] + base_vertex_valence[i]; j++) {
+            for (var j: u32 = base_vertex_offset[i]; j < base_vertex_offset[i] + 2 * base_vertex_valence[i]; j++) {
               let base_vertex = base_vertices[j];
               vertices[out] += vertices[base_vertex];
             }
@@ -276,6 +288,14 @@
         }
       `,
         });
+
+        /** output vertices from vertex kernel, for debugging
+         * 18 | -3.725290298461914e-9, 0, 0.5833333134651184, 0
+         * 19 | -0.40740740299224854, 0.40740740299224854, 0.18518519401550293, 0
+         * 20 | -0.40740740299224854, -0.40740740299224854, 0.18518519401550293, 0
+         * 21 | 0.40740740299224854, -0.40740740299224854, 0.18518519401550293, 0
+         * 22 | 0.40740740299224854, 0.40740740299224854, 0.18518519401550293, 0
+         */
 
         const face_pipeline = device.createComputePipeline({
           label: "face points compute pipeline",
@@ -375,12 +395,24 @@
           base_vertex_index
         );
 
+        const base_triangle_indices_buffer = device.createBuffer({
+          label: "base triangle indices",
+          size: base_triangle_indices.byteLength,
+          usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+        });
+        device.queue.writeBuffer(
+          base_triangle_indices_buffer,
+          0,
+          base_triangle_indices
+        );
+
         // vertex buffer is both input and output
         const vertices_buffer = device.createBuffer({
           label: "vertex buffer",
           size: vertices.byteLength,
           usage:
             GPUBufferUsage.STORAGE |
+            GPUBufferUsage.VERTEX |
             GPUBufferUsage.COPY_DST |
             GPUBufferUsage.COPY_SRC,
         });
