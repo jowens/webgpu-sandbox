@@ -336,7 +336,7 @@
       fn vertexMain(@location(0) pos: vec3f,
                     @builtin(instance_index) instance: u32) -> VertexOutput {
         var output: VertexOutput;
-        output.pos = vec4f(pos, 1);
+        output.pos = vec4f(pos * 0.25, 1);
         return output;
       }
 
