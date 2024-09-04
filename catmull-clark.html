@@ -318,14 +318,14 @@
         device.queue.writeBuffer(base_edges_buffer, 0, base_edges);
 
         const base_face_offset_buffer = device.createBuffer({
-          label: "base offset",
+          label: "face offset",
           size: base_face_offset.byteLength,
           usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
         device.queue.writeBuffer(base_face_offset_buffer, 0, base_face_offset);
 
         const base_face_valence_buffer = device.createBuffer({
-          label: "base valence",
+          label: "face valence",
           size: base_face_valence.byteLength,
           usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
@@ -333,6 +333,46 @@
           base_face_valence_buffer,
           0,
           base_face_valence
+        );
+
+        const base_vertices_buffer = device.createBuffer({
+          label: "base vertices buffer",
+          size: base_vertices.byteLength,
+          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+        device.queue.writeBuffer(base_vertices_buffer, 0, base_vertices);
+
+        const base_vertex_offset_buffer = device.createBuffer({
+          label: "vertex offset",
+          size: base_vertex_offset.byteLength,
+          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+        device.queue.writeBuffer(
+          base_vertex_offset_buffer,
+          0,
+          base_vertex_offset
+        );
+
+        const base_vertex_valence_buffer = device.createBuffer({
+          label: "vertex valence",
+          size: base_vertex_valence.byteLength,
+          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+        device.queue.writeBuffer(
+          base_vertex_valence_buffer,
+          0,
+          base_vertex_valence
+        );
+
+        const base_vertex_index_buffer = device.createBuffer({
+          label: "vertex index",
+          size: base_vertex_index.byteLength,
+          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+        device.queue.writeBuffer(
+          base_vertex_index_buffer,
+          0,
+          base_vertex_index
         );
 
         // vertex buffer is both input and output
@@ -374,6 +414,18 @@
           ],
         });
 
+        const vertex_bindGroup = device.createBindGroup({
+          label: "bindGroup for vertex kernel",
+          layout: vertex_pipeline.getBindGroupLayout(0),
+          entries: [
+            { binding: 0, resource: { buffer: vertices_buffer } },
+            { binding: 1, resource: { buffer: base_vertices_buffer } },
+            { binding: 2, resource: { buffer: base_vertex_offset_buffer } },
+            { binding: 3, resource: { buffer: base_vertex_valence_buffer } },
+            { binding: 4, resource: { buffer: base_vertex_index_buffer } },
+          ],
+        });
+
         // Encode commands to do the computation
         const encoder = device.createCommandEncoder({
           label: "overall computation (face, edge) encoder",
@@ -393,6 +445,14 @@
         edge_pass.setBindGroup(0, edge_bindGroup);
         edge_pass.dispatchWorkgroups(base_edges_count);
         edge_pass.end();
+
+        const vertex_pass = encoder.beginComputePass({
+          label: "vertex kernel compute pass",
+        });
+        vertex_pass.setPipeline(vertex_pipeline);
+        vertex_pass.setBindGroup(0, vertex_bindGroup);
+        vertex_pass.dispatchWorkgroups(base_vertex_count);
+        vertex_pass.end();
 
         // Encode a command to copy the results to a mappable buffer.
         // this is (from, to)
