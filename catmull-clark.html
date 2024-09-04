@@ -582,7 +582,13 @@
         //         pass.setBindGroup(0, bindGroups[step % 2]); // Updated!
         render_pass.setVertexBuffer(0, vertices_buffer);
         render_pass.setIndexBuffer(base_triangle_indices_buffer, "uint32");
-        render_pass.drawIndexed(base_triangle_indices.length);
+        const start_idx = 0; // this is just to draw a different set of tris
+        const end_idx = base_triangle_indices.length;
+        render_pass.drawIndexed(
+          end_idx - start_idx,
+          1 /* instance */,
+          start_idx
+        );
 
         // End the render pass and submit the command buffer
         render_pass.end();
