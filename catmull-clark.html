@@ -52,17 +52,6 @@
         // float3s were fraught with peril (padding)
         const vertices = new Float32Array(vertices_size * vertices_object_size);
 
-        const vertexBufferLayout = {
-          arrayStride: 16,
-          attributes: [
-            {
-              format: "float32x3",
-              offset: 0,
-              shaderLocation: 0,
-            },
-          ],
-        };
-
         // prettier-ignore
         const base_vertex_positions = new Float32Array([
                 0, 0, 1, 1,   // vertex 0
@@ -97,6 +86,7 @@
                 4, 3, 2, //         ... tri 4
                 4, 2, 1, //         ... tri 5
               ]);
+
         const base_face_valence = new Uint32Array([3, 3, 3, 3, 4]);
         // base_face_offset is exclusive_scan('+', base_face_valence)
         // TODO: compute that scan in a compute shader
@@ -321,12 +311,12 @@
           code: `
       struct VertexInput {
         @location(0) pos: vec3f,
-        @builtin(instance_index) instance: u32,
+        @builtin(vertex_index) vertex_index: u32,
       };
 
       struct VertexOutput {
         @builtin(position) pos: vec4f,
-        //  @location(0) cell: vec2f,
+        @location(0) color: vec4f,
       };
 
       // @group(0) @binding(0) var<uniform> grid: vec2f;
@@ -334,15 +324,20 @@
 
       @vertex
       fn vertexMain(@location(0) pos: vec3f,
-                    @builtin(instance_index) instance: u32) -> VertexOutput {
+                    @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
         var output: VertexOutput;
-        output.pos = vec4f(pos * 0.25, 1);
+        output.pos = vec4f(pos * 0.75, 1);
+        output.color = vec4f( // this is just to get some different colors
+          0.1 + select(0, 0.3, (vertex_index & 1) != 0) + select(0, 0.6, (vertex_index & 8) != 0),
+          0.1 + select(0, 0.3, (vertex_index & 2) != 0) + select(0, 0.6, (vertex_index & 16) != 0),
+          0.1 + select(0, 0.3, (vertex_index & 4) != 0) + select(0, 0.6, (vertex_index & 32) != 0),
+          0.75);
         return output;
       }
 
       @fragment
       fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
-        return vec4f(0.75, 0.75, 0.75, 1);
+        return input.color;
       }
           `,
         });
@@ -377,7 +372,20 @@
           vertex: {
             module: drawModule,
             entryPoint: "vertexMain",
-            buffers: [vertexBufferLayout],
+            buffers: [
+              {
+                // Buffer 0
+                arrayStride: 16,
+                attributes: [
+                  {
+                    shaderLocation: 0, // position
+                    format: "float32x3",
+                    offset: 0,
+                  },
+                ],
+              },
+              // could add more buffers here
+            ],
           },
           fragment: {
             module: drawModule,
@@ -529,7 +537,7 @@
 
         // Encode commands to do the computation
         const encoder = device.createCommandEncoder({
-          label: "overall computation (face, edge) encoder",
+          label: "overall computation (face, edge, vertex) + graphics encoder",
         });
         const face_pass = encoder.beginComputePass({
           label: "face kernel compute pass",
@@ -576,10 +584,10 @@
           ],
         });
 
-        // Draw the grid.
+        // Now render those tris.
         render_pass.setPipeline(draw_pipeline);
         // we're not passing anything in yet, no bind group
-        //         pass.setBindGroup(0, bindGroups[step % 2]); // Updated!
+        //         pass.setBindGroup(0, bindGroups[step % 2]);
         render_pass.setVertexBuffer(0, vertices_buffer);
         render_pass.setIndexBuffer(base_triangle_indices_buffer, "uint32");
         const start_idx = 0; // this is just to draw a different set of tris
