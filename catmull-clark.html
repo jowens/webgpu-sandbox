@@ -16,8 +16,14 @@
         mat4,
       } from "https://wgpu-matrix.org/dist/3.x/wgpu-matrix.module.js";
 
-      const UPDATE_INTERVAL = 20000; // Update every 200ms (5 times/sec)
-      let time = 0;
+      var params_DOESNOTWORK = {
+        UPDATE_INTERVAL: 20000.0, // Update every <- ms
+        time: 0.0,
+        timestep: 1.0,
+      };
+      const params = new Float32Array([200.0, 0.0, 1.0]);
+      // the following seems bad since it has to be manually updated
+      const params_length = 3 * Float32Array.BYTES_PER_ELEMENT;
 
       const adapter = await navigator.gpu?.requestAdapter();
       const device = await adapter?.requestDevice();
@@ -61,12 +67,12 @@
 
       // prettier-ignore
       const base_vertex_positions = new Float32Array([
-                    0, 0, 1, 1,   // vertex 0
-                    -1, 1, 0, 1,  // vertex 1
-                    -1, -1, 0, 1, // vertex 2
-                    1, -1, 0, 1,  // vertex 3
-                    1, 1, 0, 1,   // vertex 4
-                  ]); // use this ONLY to populate (part of) the vertex buffer
+                        0, 0, 1, 1,   // vertex 0
+                        -1, 1, 0, 1,  // vertex 1
+                        -1, -1, 0, 1, // vertex 2
+                        1, -1, 0, 1,  // vertex 3
+                        1, 1, 0, 1,   // vertex 4
+                      ]); // use this ONLY to populate (part of) the vertex buffer
       for (var i = 0; i < base_vertex_positions.length; i++) {
         vertices[i] = base_vertex_positions[i];
       }
@@ -75,24 +81,24 @@
       // Q: Is a flattened 1D array the right way to represent base faces?
       // prettier-ignore
       const base_faces = new Uint32Array([
-                    0, 1, 2, // vertices in face 0
-                    0, 2, 3, //         ... face 1
-                    0, 3, 4, //         ... face 2
-                    0, 4, 1, //         ... face 3
-                    4, 3, 2, 1, //      ... face 4
-                  ]);
+                        0, 1, 2, // vertices in face 0
+                        0, 2, 3, //         ... face 1
+                        0, 3, 4, //         ... face 2
+                        0, 4, 1, //         ... face 3
+                        4, 3, 2, 1, //      ... face 4
+                      ]);
       // the following is manually generated tri indexes from base_faces
       // TODO: this could totally be generated programmatically from
       //   base_faces plus base_face_valence
       // prettier-ignore
       const base_triangle_indices = new Uint32Array([
-                    0, 1, 2, // vertices in tri 0
-                    0, 2, 3, //         ... tri 1
-                    0, 3, 4, //         ... tri 2
-                    0, 4, 1, //         ... tri 3
-                    4, 3, 2, //         ... tri 4
-                    4, 2, 1, //         ... tri 5
-                  ]);
+                        0, 1, 2, // vertices in tri 0
+                        0, 2, 3, //         ... tri 1
+                        0, 3, 4, //         ... tri 2
+                        0, 4, 1, //         ... tri 3
+                        4, 3, 2, //         ... tri 4
+                        4, 2, 1, //         ... tri 5
+                      ]);
 
       const base_face_valence = new Uint32Array([3, 3, 3, 3, 4]);
       // base_face_offset is exclusive_scan('+', base_face_valence)
@@ -103,15 +109,15 @@
 
       // prettier-ignore
       const base_edges = new Uint32Array([
-                    0, 5, 2, 6,
-                    1, 5, 0, 8,
-                    2, 5, 1, 9,
-                    0, 6, 3, 7,
-                    3, 6, 2, 9,
-                    0, 7, 4, 8,
-                    4, 7, 3, 9,
-                    1, 8, 4, 9,
-                  ]);
+                        0, 5, 2, 6,
+                        1, 5, 0, 8,
+                        2, 5, 1, 9,
+                        0, 6, 3, 7,
+                        3, 6, 2, 9,
+                        0, 7, 4, 8,
+                        4, 7, 3, 9,
+                        1, 8, 4, 9,
+                      ]);
       const edges_object_size = 4; // (two faces, two edges)
       const base_edges_count = base_edges.length / edges_object_size;
 
@@ -123,25 +129,32 @@
       const base_vertex_index = new Uint32Array([0, 1, 2, 3, 4]);
       // prettier-ignore
       const base_vertices = new Uint32Array([
-                    4, 8, 1, 5, 2, 6, 3, 7,
-                    4, 9, 2, 5, 0, 8,
-                    3, 6, 0, 5, 1, 9,
-                    4, 7, 0, 6, 2, 9,
-                    1, 8, 0, 7, 3, 9,
-                  ]);
+                        4, 8, 1, 5, 2, 6, 3, 7,
+                        4, 9, 2, 5, 0, 8,
+                        3, 6, 0, 5, 1, 9,
+                        4, 7, 0, 6, 2, 9,
+                        1, 8, 0, 7, 3, 9,
+                      ]);
 
       const perturbInputVerticesModule = device.createShaderModule({
         label: "perturb input vertices module",
         code: /*wgsl*/ `
-          /* input + output */
-          @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
-          @compute @workgroup_size(1) fn perturbInputVerticesKernel(
-                   @builtin(global_invocation_id) id: vec3u) {
-            let i = id.x;
-            let t = f32(${time});
-            vertices[i] += vec3(t/100.0, t/100.0, 0);
-          }
-        `,
+              struct Params {
+      UPDATE_INTERVAL:f32,
+        time:f32,
+        timestep:f32,
+      }
+              /* input + output */
+              @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
+              /* uniform: time */
+              @group(0) @binding(1) var<uniform> params: Params;
+              @compute @workgroup_size(1) fn perturbInputVerticesKernel(
+                       @builtin(global_invocation_id) id: vec3u) {
+                let i = id.x;
+                let t = params.timestep;
+                vertices[i] += vec3(t/100.0, t/100.0, 0);
+              }
+            `,
       });
 
       /** (1) Calculation of face points
@@ -158,39 +171,39 @@
       const facePointsModule = device.createShaderModule({
         label: "face points module",
         code: /*wgsl*/ `
-          /* input + output */
-          @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
-          /* input */
-          @group(0) @binding(1) var<storage, read> base_faces: array<u32>;
-          @group(0) @binding(2) var<storage, read> base_face_offset: array<u32>;
-          @group(0) @binding(3) var<storage, read> base_face_valence: array<u32>;
+              /* input + output */
+              @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
+              /* input */
+              @group(0) @binding(1) var<storage, read> base_faces: array<u32>;
+              @group(0) @binding(2) var<storage, read> base_face_offset: array<u32>;
+              @group(0) @binding(3) var<storage, read> base_face_valence: array<u32>;
 
-          /** Niessner 2012:
-            * "The face kernel requires two buffers: one index buffer, whose
-            * entries are the vertex buffer indices for each vertex of the face; a
-            * second buffer stores the valence of the face along with an offset
-            * into the index buffer for the first vertex of each face."
-            *
-            * implementation above: "index buffer" is base_faces
-            *                       "valence of the face" is base_face_valence
-            *                       "offset into the index buffer" is base_face_offset
-            */
+              /** Niessner 2012:
+                * "The face kernel requires two buffers: one index buffer, whose
+                * entries are the vertex buffer indices for each vertex of the face; a
+                * second buffer stores the valence of the face along with an offset
+                * into the index buffer for the first vertex of each face."
+                *
+                * implementation above: "index buffer" is base_faces
+                *                       "valence of the face" is base_face_valence
+                *                       "offset into the index buffer" is base_face_offset
+                */
 
-          @compute @workgroup_size(1) fn facePointsKernel(
-            @builtin(global_invocation_id) id: vec3u) {
-            let i = id.x;
-            /* TODO: exit if my index is larger than the size of the input */
+              @compute @workgroup_size(1) fn facePointsKernel(
+                @builtin(global_invocation_id) id: vec3u) {
+                let i = id.x;
+                /* TODO: exit if my index is larger than the size of the input */
 
-            let out = i + ${vertices_write_ptr};
-            vertices[out] = vec3f(0,0,0);
-            for (var j: u32 = base_face_offset[i]; j < base_face_offset[i] + base_face_valence[i]; j++) {
-              let face_vertex = base_faces[j];
-              vertices[out] += vertices[face_vertex];
-            }
-            vertices[out] /= f32(base_face_valence[i]);
-            // TODO: decide on vec3f or vec4f and set w if so
-          }
-        `,
+                let out = i + ${vertices_write_ptr};
+                vertices[out] = vec3f(0,0,0);
+                for (var j: u32 = base_face_offset[i]; j < base_face_offset[i] + base_face_valence[i]; j++) {
+                  let face_vertex = base_faces[j];
+                  vertices[out] += vertices[face_vertex];
+                }
+                vertices[out] /= f32(base_face_valence[i]);
+                // TODO: decide on vec3f or vec4f and set w if so
+              }
+            `,
       });
 
       vertices_write_ptr += base_faces_count;
@@ -215,31 +228,31 @@
       const edgePointsModule = device.createShaderModule({
         label: "edge points module",
         code: /*wgsl*/ `
-                  /* input + output */
-                  @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
-                  /* input */
-                  @group(0) @binding(1) var<storage, read> base_edges: array<vec4u>;
+                      /* input + output */
+                      @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
+                      /* input */
+                      @group(0) @binding(1) var<storage, read> base_edges: array<vec4u>;
 
-                  /** "Since a single (non-boundary) edge always has two incident faces and vertices,
-                   * the edge kernel needs a buffer for the indices of these entities."
-                   *
-                   * implementation above: "a buffer for the indices of these entities" is base_edges
-                   */
+                      /** "Since a single (non-boundary) edge always has two incident faces and vertices,
+                       * the edge kernel needs a buffer for the indices of these entities."
+                       *
+                       * implementation above: "a buffer for the indices of these entities" is base_edges
+                       */
 
-                  @compute @workgroup_size(1) fn edgePointsKernel(
-                    @builtin(global_invocation_id) id: vec3u) {
-                      let i = id.x;
-                      /* TODO: exit if my index is larger than the size of the input */
+                      @compute @workgroup_size(1) fn edgePointsKernel(
+                        @builtin(global_invocation_id) id: vec3u) {
+                          let i = id.x;
+                          /* TODO: exit if my index is larger than the size of the input */
 
-                      let out = i + ${vertices_write_ptr};
-                      let edge_id = i;
-                      vertices[out] = vec3f(0,0,0);
-                      for (var j: u32 = 0; j < 4; j++) {
-                        vertices[out] += vertices[base_edges[edge_id][j]];
+                          let out = i + ${vertices_write_ptr};
+                          let edge_id = i;
+                          vertices[out] = vec3f(0,0,0);
+                          for (var j: u32 = 0; j < 4; j++) {
+                            vertices[out] += vertices[base_edges[edge_id][j]];
+                          }
+                          vertices[out] *= 0.25;
                       }
-                      vertices[out] *= 0.25;
-                  }
-                `,
+                    `,
       });
 
       vertices_write_ptr += base_edges_count;
@@ -285,38 +298,38 @@
       const vertexPointsModule = device.createShaderModule({
         label: "vertex points module",
         code: /*wgsl*/ `
-          /* input + output */
-          @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
-          /* input */
-          @group(0) @binding(1) var<storage, read> base_vertices: array<u32>;
-          @group(0) @binding(2) var<storage, read> base_vertex_offset: array<u32>;
-          @group(0) @binding(3) var<storage, read> base_vertex_valence: array<u32>;
-          @group(0) @binding(4) var<storage, read> base_vertex_index: array<u32>;
+              /* input + output */
+              @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
+              /* input */
+              @group(0) @binding(1) var<storage, read> base_vertices: array<u32>;
+              @group(0) @binding(2) var<storage, read> base_vertex_offset: array<u32>;
+              @group(0) @binding(3) var<storage, read> base_vertex_valence: array<u32>;
+              @group(0) @binding(4) var<storage, read> base_vertex_index: array<u32>;
 
-          /** "We use an index buffer containing the indices of the incident edge and
-           * vertex points."
-           *
-           * implementation above: "a buffer for the indices of these entities" is base_vertices
-           */
+              /** "We use an index buffer containing the indices of the incident edge and
+               * vertex points."
+               *
+               * implementation above: "a buffer for the indices of these entities" is base_vertices
+               */
 
-          @compute @workgroup_size(1) fn vertexPointsKernel(
-            @builtin(global_invocation_id) id: vec3u) {
-              let i = id.x;
-              /* TODO: exit if my index is larger than the size of the input */
+              @compute @workgroup_size(1) fn vertexPointsKernel(
+                @builtin(global_invocation_id) id: vec3u) {
+                  let i = id.x;
+                  /* TODO: exit if my index is larger than the size of the input */
 
-              let out = i + ${vertices_write_ptr};
-              let valence = base_vertex_valence[i];
-              vertices[out] = vec3f(0,0,0);
-              for (var j: u32 = base_vertex_offset[i]; j < base_vertex_offset[i] + 2 * base_vertex_valence[i]; j++) {
-                let base_vertex = base_vertices[j];
-                vertices[out] += vertices[base_vertex];
+                  let out = i + ${vertices_write_ptr};
+                  let valence = base_vertex_valence[i];
+                  vertices[out] = vec3f(0,0,0);
+                  for (var j: u32 = base_vertex_offset[i]; j < base_vertex_offset[i] + 2 * base_vertex_valence[i]; j++) {
+                    let base_vertex = base_vertices[j];
+                    vertices[out] += vertices[base_vertex];
+                  }
+                  vertices[out] /= f32(valence);
+                  vertices[out] += f32(valence - 2) * vertices[base_vertex_index[i]];
+                  vertices[out] /= f32(valence);
+                  // TODO: decide on vec3f or vec4f and set w if so
               }
-              vertices[out] /= f32(valence);
-              vertices[out] += f32(valence - 2) * vertices[base_vertex_index[i]];
-              vertices[out] /= f32(valence);
-              // TODO: decide on vec3f or vec4f and set w if so
-          }
-        `,
+            `,
       });
 
       /** output vertices from vertex kernel, for debugging
@@ -330,39 +343,39 @@
       const drawModule = device.createShaderModule({
         label: "draw module",
         code: `
-          struct VertexInput {
-            @location(0) pos: vec3f,
-            @builtin(vertex_index) vertex_index: u32,
-          };
+              struct VertexInput {
+                @location(0) pos: vec3f,
+                @builtin(vertex_index) vertex_index: u32,
+              };
 
-          struct VertexOutput {
-            @builtin(position) pos: vec4f,
-            @location(0) color: vec4f,
-          };
+              struct VertexOutput {
+                @builtin(position) pos: vec4f,
+                @location(0) color: vec4f,
+              };
 
-          // @group(0) @binding(0) var<uniform> grid: vec2f;
-          // @group(0) @binding(1) var<storage> cellState: array<u32>;
+              // @group(0) @binding(0) var<uniform> grid: vec2f;
+              // @group(0) @binding(1) var<storage> cellState: array<u32>;
 
-          @vertex
-          fn vertexMain(@location(0) pos: vec3f,
-                        @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
-            var output: VertexOutput;
-            output.pos = vec4f(pos * 0.98, 1);
-            output.pos.z += 0.05; // if this is +, base is within clipping area, shown
-                                  // if this is -, base is outside clipping area, clipped
-            output.color = vec4f( // this is just to get some different colors
-              0.1 + select(0, 0.3, (vertex_index & 1) != 0) + select(0, 0.6, (vertex_index & 8) != 0),
-              0.1 + select(0, 0.3, (vertex_index & 2) != 0) + select(0, 0.6, (vertex_index & 16) != 0),
-              0.1 + select(0, 0.3, (vertex_index & 4) != 0) + select(0, 0.6, (vertex_index & 32) != 0),
-              0.75);
-            return output;
-          }
+              @vertex
+              fn vertexMain(@location(0) pos: vec3f,
+                            @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
+                var output: VertexOutput;
+                output.pos = vec4f(pos * 0.98, 1);
+                output.pos.z += 0.05; // if this is +, base is within clipping area, shown
+                                      // if this is -, base is outside clipping area, clipped
+                output.color = vec4f( // this is just to get some different colors
+                  0.1 + select(0, 0.3, (vertex_index & 1) != 0) + select(0, 0.6, (vertex_index & 8) != 0),
+                  0.1 + select(0, 0.3, (vertex_index & 2) != 0) + select(0, 0.6, (vertex_index & 16) != 0),
+                  0.1 + select(0, 0.3, (vertex_index & 4) != 0) + select(0, 0.6, (vertex_index & 32) != 0),
+                  0.75);
+                return output;
+              }
 
-          @fragment
-          fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
-            return input.color;
-          }
-              `,
+              @fragment
+              fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
+                return input.color;
+              }
+                  `,
       });
 
       const perturb_pipeline = device.createComputePipeline({
@@ -506,6 +519,13 @@
         base_triangle_indices
       );
 
+      const params_buffer = device.createBuffer({
+        label: "params buffer",
+        size: params_length,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      });
+      device.queue.writeBuffer(params_buffer, 0, params);
+
       // vertex buffer is both input and output
       const vertices_buffer = device.createBuffer({
         label: "vertex buffer",
@@ -529,7 +549,10 @@
       const perturb_bindGroup = device.createBindGroup({
         label: "bindGroup for perturb input vertices kernel",
         layout: perturb_pipeline.getBindGroupLayout(0),
-        entries: [{ binding: 0, resource: { buffer: vertices_buffer } }],
+        entries: [
+          { binding: 0, resource: { buffer: vertices_buffer } },
+          { binding: 1, resource: { buffer: params_buffer } },
+        ],
       });
 
       const face_bindGroup = device.createBindGroup({
@@ -565,6 +588,9 @@
       });
 
       async function renderLoop() {
+        /* Q: Is this the right way to set up a render loop,
+         *, e.g., the right things are inside it and otuside it? */
+        /* Q: is "async" OK? It has an async fn within it. */
         // Encode commands to do the computation
         const encoder = device.createCommandEncoder({
           label:
@@ -654,13 +680,15 @@
 
         console.log("base vertex positions", vertices);
         console.log("final vertex buffer", result);
-        console.log("time", time);
+        console.log("time", params[1]); //// params.timestep);
+        ////        params.time += params.timestep;
+        params[1] += params[2];
+        device.queue.writeBuffer(params_buffer, 0, params);
       }
       renderLoop(); // render first frame right away
-      time++;
 
-      // Schedule updateGrid() to run repeatedly
-      setInterval(renderLoop, UPDATE_INTERVAL);
+      // Schedule renderLoop() to run repeatedly
+      setInterval(renderLoop, params[0]); //// params.UPDATE_INTERVAL);
 
       function fail(msg) {
         // eslint-disable-next-line no-alert
