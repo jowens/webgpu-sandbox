@@ -16,7 +16,7 @@
         mat4,
       } from "https://wgpu-matrix.org/dist/3.x/wgpu-matrix.module.js";
 
-      const UPDATE_INTERVAL = 200000; // Update every 200ms (5 times/sec)
+      const UPDATE_INTERVAL = 20000; // Update every 200ms (5 times/sec)
       let time = 0;
 
       const adapter = await navigator.gpu?.requestAdapter();
@@ -285,38 +285,38 @@
       const vertexPointsModule = device.createShaderModule({
         label: "vertex points module",
         code: /*wgsl*/ `
-                  /* input + output */
-                  @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
-                  /* input */
-                  @group(0) @binding(1) var<storage, read> base_vertices: array<u32>;
-                  @group(0) @binding(2) var<storage, read> base_vertex_offset: array<u32>;
-                  @group(0) @binding(3) var<storage, read> base_vertex_valence: array<u32>;
-                  @group(0) @binding(4) var<storage, read> base_vertex_index: array<u32>;
+          /* input + output */
+          @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
+          /* input */
+          @group(0) @binding(1) var<storage, read> base_vertices: array<u32>;
+          @group(0) @binding(2) var<storage, read> base_vertex_offset: array<u32>;
+          @group(0) @binding(3) var<storage, read> base_vertex_valence: array<u32>;
+          @group(0) @binding(4) var<storage, read> base_vertex_index: array<u32>;
 
-                  /** "We use an index buffer containing the indices of the incident edge and
-                   * vertex points."
-                   *
-                   * implementation above: "a buffer for the indices of these entities" is base_vertices
-                   */
+          /** "We use an index buffer containing the indices of the incident edge and
+           * vertex points."
+           *
+           * implementation above: "a buffer for the indices of these entities" is base_vertices
+           */
 
-                  @compute @workgroup_size(1) fn vertexPointsKernel(
-                    @builtin(global_invocation_id) id: vec3u) {
-                      let i = id.x;
-                      /* TODO: exit if my index is larger than the size of the input */
+          @compute @workgroup_size(1) fn vertexPointsKernel(
+            @builtin(global_invocation_id) id: vec3u) {
+              let i = id.x;
+              /* TODO: exit if my index is larger than the size of the input */
 
-                      let out = i + ${vertices_write_ptr};
-                      let valence = base_vertex_valence[i];
-                      vertices[out] = vec3f(0,0,0);
-                      for (var j: u32 = base_vertex_offset[i]; j < base_vertex_offset[i] + 2 * base_vertex_valence[i]; j++) {
-                        let base_vertex = base_vertices[j];
-                        vertices[out] += vertices[base_vertex];
-                      }
-                      vertices[out] /= f32(valence);
-                      vertices[out] += f32(valence - 2) * vertices[base_vertex_index[i]];
-                      vertices[out] /= f32(valence);
-                      // TODO: decide on vec3f or vec4f and set w if so
-                  }
-                `,
+              let out = i + ${vertices_write_ptr};
+              let valence = base_vertex_valence[i];
+              vertices[out] = vec3f(0,0,0);
+              for (var j: u32 = base_vertex_offset[i]; j < base_vertex_offset[i] + 2 * base_vertex_valence[i]; j++) {
+                let base_vertex = base_vertices[j];
+                vertices[out] += vertices[base_vertex];
+              }
+              vertices[out] /= f32(valence);
+              vertices[out] += f32(valence - 2) * vertices[base_vertex_index[i]];
+              vertices[out] /= f32(valence);
+              // TODO: decide on vec3f or vec4f and set w if so
+          }
+        `,
       });
 
       /** output vertices from vertex kernel, for debugging
@@ -576,7 +576,7 @@
         });
         perturb_pass.setPipeline(perturb_pipeline);
         perturb_pass.setBindGroup(0, perturb_bindGroup);
-        perturb_pass.dispatchWorkgroups(base_faces_count);
+        perturb_pass.dispatchWorkgroups(base_vertex_positions.length);
         perturb_pass.end();
 
         const face_pass = encoder.beginComputePass({
@@ -654,6 +654,7 @@
 
         console.log("base vertex positions", vertices);
         console.log("final vertex buffer", result);
+        console.log("time", time);
       }
       renderLoop(); // render first frame right away
       time++;
