@@ -34,11 +34,19 @@
     <p>Things missing from WebGPU:<ul>
       <li>Indexed quad rendering</li>
     </ul></p>
+    <p>What would be fun to write that I'm secretly hoping I get to write:<ul>
+      <li>More levels of subdivision</li>
+      <li>Automatically generating all tables for that subdivision (in the CPU, at "compile time",
+        but really at runtime when the program is launched)</li>
+      <li>More interesting inputs than a pyramid</li>
+      <li>Integrating a prefix-sum for the valence-offset tables</li>
+    </ul></p>
     <p>What could make this visually better:<ul>
       <li>Normal vectors per face, and lighting, rather than fixed vertex colors (that, moreover,
         aren't consistent across subdivision levels)</li>
       <li><a href="https://webgpu.github.io/webgpu-samples/?sample=wireframe">Wireframe</a> that
         shows the underlying mesh</li>
+      <li>Better choice of parameters that generates a smooth animation</li>
     </ul></p>
     <p>What could make the (nonexistent) UI better:<ul>
       <li><a href="https://webgpu.github.io/webgpu-samples/?sample=cameras">Camera control</a></li>
