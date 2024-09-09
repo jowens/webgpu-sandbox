@@ -437,6 +437,12 @@
         },
       });
 
+      const depthTexture = device.createTexture({
+        size: [canvas.width, canvas.height],
+        format: "depth24plus",
+        usage: GPUTextureUsage.RENDER_ATTACHMENT,
+      });
+
       const render_pipeline = device.createRenderPipeline({
         label: "render pipeline",
         layout: "auto",
@@ -466,6 +472,11 @@
               format: canvasFormat,
             },
           ],
+        },
+        depthStencil: {
+          depthWriteEnabled: true,
+          depthCompare: "less",
+          format: "depth24plus",
         },
       });
 
@@ -722,6 +733,13 @@
               storeOp: "store",
             },
           ],
+          depthStencilAttachment: {
+            view: depthTexture.createView(),
+
+            depthClearValue: 1.0,
+            depthLoadOp: "clear",
+            depthStoreOp: "store",
+          },
         });
 
         // Now render those tris.
