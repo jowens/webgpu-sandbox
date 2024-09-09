@@ -9,21 +9,36 @@
   <body>
     <canvas width="512" height="512"></canvas>
     <p>What this demo shows:<ul>
-      <li>A 5-face square pyramid, vertex colors procedurally generated as a function of vertex ID</li>
-      <li>Rendered as indexed triangles</li>
-      <li>Camera is implemented in the vertex shader; it rotates around the pyramid. Camera code mostly swiped from <a href="https://webgpu.github.io/webgpu-samples/?sample=rotatingCube">rotating cube demo</a>.</li>
+      <li>Toggle between:<ul>
+        <li>A 5-face square pyramid</li>
+        <li>A 16-face solid that is the
+          (<a href="https://en.wikipedia.org/wiki/Catmull%E2%80%93Clark_subdivision_surface">Catmull-Clark</a>)
+          subdivided mesh of the 5-face pyramid, using the formulation of
+          <a href="https://dl.acm.org/doi/10.1145/2077341.2077347">Niessner et al.</a> Connectivity is
+          statically generated, but the subdivision is computed dynamically in a compute shader.</li>
+      </ul></li>
       <li>Pyramid vertices are perturbed (as a function of vertex ID) in a compute shader</li>
+      <li>Rendered as indexed triangles</li>
+      <li>Toggle is implemented simply by binding a different index buffer</li>
+      <li>Vertex colors are procedurally generated as a function of vertex ID</li>
+      <li>Camera is implemented in the vertex shader; it rotates around the pyramid. Camera code
+        mostly swiped from <a href="https://webgpu.github.io/webgpu-samples/?sample=rotatingCube">rotating
+          cube demo</a>.</li>
     </ul></p>
-    <p><a href="https://webgpufundamentals.org/webgpu/lessons/webgpu-fundamentals.html">Code with which I started</a></p>
+    <p><a href="https://webgpufundamentals.org/webgpu/lessons/webgpu-fundamentals.html">Code
+      with which I started</a></p>
     <p>External includes that help make this work:<ul>
-      <li><a href="https://wgpu-matrix.org/docs/">wgpu-matrix</a> for modelview/projection matrix operations</li>
+      <li><a href="https://wgpu-matrix.org/docs/">wgpu-matrix</a> for modelview/projection
+         matrix operations</li>
     </ul></p>
-    <p>Things missing from WebGPU:
-      <ul>Indexed quad rendering</ul>
-    </p>
+    <p>Things missing from WebGPU:<ul>
+      <li>Indexed quad rendering</li>
+    </ul></p>
     <p>What could make this visually better:<ul>
-      <li>Normal vectors per face, and lighting, rather than fixed vertex colors</li>
-      <li><a href="https://webgpu.github.io/webgpu-samples/?sample=wireframe">Wireframe</a> that shows the underlying mesh</li>
+      <li>Normal vectors per face, and lighting, rather than fixed vertex colors (that, moreover,
+        aren't consistent across subdivision levels)</li>
+      <li><a href="https://webgpu.github.io/webgpu-samples/?sample=wireframe">Wireframe</a> that
+        shows the underlying mesh</li>
     </ul></p>
     <p>What could make the (nonexistent) UI better:<ul>
       <li><a href="https://webgpu.github.io/webgpu-samples/?sample=cameras">Camera control</a></li>
@@ -138,7 +153,6 @@
         8, 15, 22, 17,
         11, 8, 17, 19,
         5, 11, 19, 12,
-        10, 5, 12, 20,
         9, 14, 20, 12, // pyramid base
         9, 16, 21, 14,
         9, 17, 22, 16,
@@ -161,7 +175,6 @@
         8, 15, 22,  8, 22, 17,
         11, 8, 17,  11, 17, 19,
         5, 11, 19,  5, 19, 12,
-        10, 5, 12,  10, 12, 20,
         9, 14, 20,  9, 20, 12, // pyramid base
         9, 16, 21,  9, 21, 14,
         9, 17, 22,  9, 22, 16,
@@ -812,17 +825,20 @@
         render_pass.setPipeline(render_pipeline);
         render_pass.setBindGroup(0, render_bindGroup);
         render_pass.setVertexBuffer(0, vertices_buffer);
-        const mesh_level = 1;
+        const mesh_duration = 10;
         var start_idx = -1;
         var end_idx = -1;
-        if (mesh_level == 0) {
-          render_pass.setIndexBuffer(base_triangle_indices_buffer, "uint32");
-          start_idx = 0; // this is just to draw a different set of tris
-          end_idx = base_triangle_indices.length;
-        } else if (mesh_level == 1) {
-          render_pass.setIndexBuffer(subdiv_1_triangle_indices_buffer, "uint32");
-          start_idx = 0; // this is just to draw a different set of tris
-          end_idx = subdiv_1_triangle_indices.length;
+        switch((params[1] / mesh_duration) & 1) {
+          case 0:
+            render_pass.setIndexBuffer(base_triangle_indices_buffer, "uint32");
+            start_idx = 0; // this is just to draw a different set of tris
+            end_idx = base_triangle_indices.length;
+            break;
+          case 1:
+            render_pass.setIndexBuffer(subdiv_1_triangle_indices_buffer, "uint32");
+            start_idx = 0; // this is just to draw a different set of tris
+            end_idx = subdiv_1_triangle_indices.length;
+            break;
         }
         render_pass.drawIndexed(
           end_idx - start_idx,
