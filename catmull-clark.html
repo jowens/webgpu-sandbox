@@ -391,9 +391,9 @@
                                           // if this is -, base is outside clipping area, clipped
                     output.pos = uniforms.modelViewProjectionMatrix * pos;
                     output.color = vec4f( // this generates 64 different colors
-                      0.1 + select(0, 0.3, (vertex_index & 1) != 0) + select(0, 0.6, (vertex_index & 8) != 0),
-                      0.1 + select(0, 0.3, (vertex_index & 2) != 0) + select(0, 0.6, (vertex_index & 16) != 0),
-                      0.1 + select(0, 0.3, (vertex_index & 4) != 0) + select(0, 0.6, (vertex_index & 32) != 0),
+                      0.35 + select(0, 0.6, (vertex_index & 1) != 0) - select(0, 0.3, (vertex_index & 8) != 0),
+                      0.35 + select(0, 0.6, (vertex_index & 2) != 0) - select(0, 0.3, (vertex_index & 16) != 0),
+                      0.35 + select(0, 0.6, (vertex_index & 4) != 0) - select(0, 0.3, (vertex_index & 32) != 0),
                       0.75 /* partial transparency might aid debugging */);
                     return output;
                   }
