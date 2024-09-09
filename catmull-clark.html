@@ -16,13 +16,16 @@
         mat4,
       } from "https://wgpu-matrix.org/dist/3.x/wgpu-matrix.module.js";
 
+      // Q: I would like to pass in a struct as a uniform,
+      // but I couldn't get that to work, and converted to an
+      // array instead
       var params_DOESNOTWORK = {
         UPDATE_INTERVAL: 20000.0, // Update every <- ms
         time: 0.0,
         timestep: 1.0,
       };
       const params = new Float32Array([200.0, 0.0, 1.0]);
-      // the following seems bad since it has to be manually updated
+      // Q: the following seems bad since it has to be manually updated
       const params_length = 3 * Float32Array.BYTES_PER_ELEMENT;
 
       const adapter = await navigator.gpu?.requestAdapter();
@@ -139,22 +142,22 @@
       const perturbInputVerticesModule = device.createShaderModule({
         label: "perturb input vertices module",
         code: /*wgsl*/ `
-              struct Params {
-      UPDATE_INTERVAL:f32,
-        time:f32,
-        timestep:f32,
-      }
-              /* input + output */
-              @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
-              /* uniform: time */
-              @group(0) @binding(1) var<uniform> params: Params;
-              @compute @workgroup_size(1) fn perturbInputVerticesKernel(
-                       @builtin(global_invocation_id) id: vec3u) {
-                let i = id.x;
-                let t = params.timestep;
-                vertices[i] += vec3(t/100.0, t/100.0, 0);
-              }
-            `,
+          struct Params {
+            UPDATE_INTERVAL:f32,
+            time:f32,
+            timestep:f32,
+          }
+          /* input + output */
+          @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
+          /* uniform: time */
+          @group(0) @binding(1) var<uniform> params: Params;
+          @compute @workgroup_size(1) fn perturbInputVerticesKernel(
+                   @builtin(global_invocation_id) id: vec3u) {
+            let i = id.x;
+            let t = params.timestep;
+            vertices[i] += vec3(t/100.0, t/100.0, 0);
+          }
+        `,
       });
 
       /** (1) Calculation of face points
@@ -589,7 +592,7 @@
 
       async function renderLoop() {
         /* Q: Is this the right way to set up a render loop,
-         *, e.g., the right things are inside it and otuside it? */
+         *, e.g., the right things are inside it and outside it? */
         /* Q: is "async" OK? It has an async fn within it. */
         // Encode commands to do the computation
         const encoder = device.createCommandEncoder({
