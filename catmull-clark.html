@@ -18,6 +18,10 @@
           Connectivity is statically generated, but the subdivision is computed dynamically in a compute shader.
           Thus we can send a small mesh from CPU to GPU, animate that small mesh (on the CPU), and generate its
           more detailed subdivision entirely on the GPU.</li>
+          <li>These two surfaces don't look too similar, to be honest. That is typical though (level 0 and level
+            1 aren't super close to each other, and it's additionally possible there could be coding mistakes).
+            The subdivided surface at level 1 should be the proper subdivision of the level-0 pyramid.
+            If we kept subdividing, we would eventually get a smooth limit surface.</li>
       </ul></li>
       <li>Pyramid vertices are perturbed (as a function of vertex ID) in a compute shader</li>
       <li>Rendered as indexed triangles</li>
