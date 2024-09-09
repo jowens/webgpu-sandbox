@@ -8,6 +8,22 @@
 
   <body>
     <canvas width="512" height="512"></canvas>
+    <p>What this demo shows:<ul>
+      <li>A 5-face square pyramid, vertex colors procedurally generated as a function of vertex ID</li>
+      <li>Rendered as indexed triangles</li>
+      <li>Camera is implemented in the vertex shader; it rotates around the pyramid. Camera code mostly swiped from <a href="https://webgpu.github.io/webgpu-samples/?sample=rotatingCube">rotating cube demo</a>.</li>
+      <li>Pyramid vertices are perturbed (as a function of vertex ID) in a compute shader</li>
+    </ul></p>
+    <p>External includes that help make this work:<ul>
+      <li><a href="https://wgpu-matrix.org/docs/">wgpu-matrix</a> for modelview/projection matrix operations</li>
+    </ul></p>
+    <p>What could make this visually better:<ul>
+      <li>Normal vectors per face, and lighting, rather than fixed vertex colors</li>
+      <li><a href="https://webgpu.github.io/webgpu-samples/?sample=wireframe">Wireframe</a> that shows the underlying mesh</li>
+    </ul></p>
+    <p>What could make the (nonexistent) UI better:<ul>
+      <li><a href="https://webgpu.github.io/webgpu-samples/?sample=cameras">Camera control</a></li>
+    </ul></p>
     <script type="module">
       // inspiration: https://webgpufundamentals.org/webgpu/lessons/webgpu-fundamentals.html
 
@@ -379,16 +395,6 @@
                   fn vertexMain(@location(0) pos: vec4f,
                                 @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
                     var output: VertexOutput;
-                    /* this janky code is just about fitting things in the viewport
-                     * absolutely this should use modelview xforms, etc.
-                     *
-                     * by default we're looking at the bottom of the pyramid
-                     * looking in +z direction, clips at 0 (so we see only +z values)
-                     * x, y range from [-1, 1]
-                     */
-                    // output.pos = vec4f(pos * 0.5, 1);
-                    // output.pos.z += 0.05; // if this is +, base is within clipping area, shown
-                                          // if this is -, base is outside clipping area, clipped
                     output.pos = uniforms.modelViewProjectionMatrix * pos;
                     output.color = vec4f( // this generates 64 different colors
                       0.35 + select(0, 0.6, (vertex_index & 1) != 0) - select(0, 0.3, (vertex_index & 8) != 0),
