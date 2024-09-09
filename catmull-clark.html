@@ -14,8 +14,10 @@
         <li>A 16-face solid that is the
           (<a href="https://en.wikipedia.org/wiki/Catmull%E2%80%93Clark_subdivision_surface">Catmull-Clark</a>)
           subdivided mesh of the 5-face pyramid, using the formulation of
-          <a href="https://dl.acm.org/doi/10.1145/2077341.2077347">Niessner et al.</a> Connectivity is
-          statically generated, but the subdivision is computed dynamically in a compute shader.</li>
+          <a href="https://dl.acm.org/doi/10.1145/2077341.2077347">Niessner et al.</a> <b>Why this is cool</b>:
+          Connectivity is statically generated, but the subdivision is computed dynamically in a compute shader.
+          Thus we can send a small mesh from CPU to GPU, animate that small mesh (on the CPU), and generate its
+          more detailed subdivision entirely on the GPU.</li>
       </ul></li>
       <li>Pyramid vertices are perturbed (as a function of vertex ID) in a compute shader</li>
       <li>Rendered as indexed triangles</li>
@@ -33,12 +35,16 @@
     </ul></p>
     <p>Things missing from WebGPU:<ul>
       <li>Indexed quad rendering</li>
+      <li>Hardware tessellation units (not sure on this, though)</li>
     </ul></p>
     <p>What would be fun to write that I'm secretly hoping I get to write:<ul>
       <li>More levels of subdivision</li>
       <li>Automatically generating all tables for that subdivision (in the CPU, at "compile time",
         but really at runtime when the program is launched)</li>
       <li>More interesting inputs than a pyramid</li>
+      <li>The whole point of Niessner's formulation is it supports sharp creases. That's currently
+        ignored in the implementation.</li>
+      <li>Adaptive subdivision (subdividing only where necessary)</li>
       <li>Integrating a prefix-sum for the valence-offset tables</li>
     </ul></p>
     <p>What could make this visually better:<ul>
