@@ -410,7 +410,7 @@
 
       const vertexPointsModule = device.createShaderModule({
         label: "vertex points module",
-        code: /*wgsl*/ `
+        code: /* wgsl */`
           /* input + output */
           @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
           /* input */
