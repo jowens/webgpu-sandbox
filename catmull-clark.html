@@ -235,12 +235,12 @@
 
       // prettier-ignore
       const base_vertex_positions = new Float32Array([
-                                0, 0, 1, 1,   // vertex 0
-                                -1, 1, 0, 1,  // vertex 1
-                                -1, -1, 0, 1, // vertex 2
-                                1, -1, 0, 1,  // vertex 3
-                                1, 1, 0, 1,   // vertex 4
-                              ]); // use this ONLY to populate (part of) the vertex buffer
+        0, 0, 1, 1,   // vertex 0
+        -1, 1, 0, 1,  // vertex 1
+        -1, -1, 0, 1, // vertex 2
+        1, -1, 0, 1,  // vertex 3
+        1, 1, 0, 1,   // vertex 4
+      ]); // use this ONLY to populate (part of) the vertex buffer
       for (var i = 0; i < base_vertex_positions.length; i++) {
         vertices[i] = base_vertex_positions[i];
       }
@@ -255,34 +255,34 @@
       // i am guessing flattened data structures (like this one) are preferred
       // prettier-ignore
       const base_faces = new Uint32Array([ /* FIG4 */
-                                0, 1, 2, // vertices in face 0
-                                0, 2, 3, //         ... face 1
-                                0, 3, 4, //         ... face 2
-                                0, 4, 1, //         ... face 3
-                                4, 3, 2, 1, //      ... face 4
-                              ]);
+        0, 1, 2, // vertices in face 0
+        0, 2, 3, //         ... face 1
+        0, 3, 4, //         ... face 2
+        0, 4, 1, //         ... face 3
+        4, 3, 2, 1, //      ... face 4
+      ]);
       // the following should be generated at compile time from base_faces
       // done manually here
       // these are quads and generate triangles next
       // prettier-ignore
       const subdiv_1_faces = new Uint32Array([
-            18, 11, 5, 10, // top ring
-            18, 10, 6, 13,
-            18, 13, 7, 15,
-            18, 15, 8, 11,
-            10, 5, 12, 20, // lower ring
-            6, 10, 20, 14,
-            13, 6, 14, 21,
-            7, 13, 21, 16,
-            15, 7, 16, 22,
-            8, 15, 22, 17,
-            11, 8, 17, 19,
-            5, 11, 19, 12,
-            9, 14, 20, 12, // pyramid base
-            9, 16, 21, 14,
-            9, 17, 22, 16,
-            9, 12, 19, 17,
-          ]);
+        18, 11, 5, 10, // top ring
+        18, 10, 6, 13,
+        18, 13, 7, 15,
+        18, 15, 8, 11,
+        10, 5, 12, 20, // lower ring
+        6, 10, 20, 14,
+        13, 6, 14, 21,
+        7, 13, 21, 16,
+        15, 7, 16, 22,
+        8, 15, 22, 17,
+        11, 8, 17, 19,
+        5, 11, 19, 12,
+        9, 14, 20, 12, // pyramid base
+        9, 16, 21, 14,
+        9, 17, 22, 16,
+        9, 12, 19, 17,
+      ]);
       // the following is manually generated tri indexes from base_faces
       //   and subdiv_1_faces
       // TODO: this could totally be generated programmatically from
@@ -329,15 +329,15 @@
 
       // prettier-ignore
       const base_edges = new Uint32Array([ /* FIG4 */
-                                0, 5, 2, 6,
-                                1, 5, 0, 8,
-                                2, 5, 1, 9,
-                                0, 6, 3, 7,
-                                3, 6, 2, 9,
-                                0, 7, 4, 8,
-                                4, 7, 3, 9,
-                                1, 8, 4, 9,
-                              ]);
+        0, 5, 2, 6,
+        1, 5, 0, 8,
+        2, 5, 1, 9,
+        0, 6, 3, 7,
+        3, 6, 2, 9,
+        0, 7, 4, 8,
+        4, 7, 3, 9,
+        1, 8, 4, 9,
+      ]);
       const edges_object_size = 4; // (two faces, two edges)
       const base_edges_count = base_edges.length / edges_object_size;
 
@@ -349,12 +349,12 @@
       const base_vertex_index = new Uint32Array([0, 1, 2, 3, 4]); /* FIG4 */
       // prettier-ignore
       const base_vertices = new Uint32Array([ /* FIG4 */
-                                4, 8, 1, 5, 2, 6, 3, 7,
-                                4, 9, 2, 5, 0, 8,
-                                3, 6, 0, 5, 1, 9,
-                                4, 7, 0, 6, 2, 9,
-                                1, 8, 0, 7, 3, 9,
-                              ]);
+        4, 8, 1, 5, 2, 6, 3, 7,
+        4, 9, 2, 5, 0, 8,
+        3, 6, 0, 5, 1, 9,
+        4, 7, 0, 6, 2, 9,
+        1, 8, 0, 7, 3, 9,
+      ]);
 
       const perturbInputVerticesModule = device.createShaderModule({
         label: "perturb input vertices module",
@@ -1004,12 +1004,12 @@
 
         render_pass.setIndexBuffer(triangle_indices_buffer, "uint32");
         switch ((now / mesh_duration) & 1) {
-          case 0:
-            start_idx = 0; // this is just to draw a different set of tris
+          case 0 /* draws tris [0, base_triangles_count) */:
+            start_idx = 0;
             end_idx = base_triangles_count * 3;
             break;
-          case 1:
-            start_idx = base_triangles_count * 3; // this is just to draw a different set of tris
+          case 1 /* draws tris [base_triangles_count, base + subdiv counts) */:
+            start_idx = base_triangles_count * 3;
             end_idx = (base_triangles_count + subdiv_1_triangles_count) * 3;
             break;
         }
