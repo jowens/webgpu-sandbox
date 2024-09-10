@@ -21,7 +21,9 @@
           <li>These two surfaces don't look too similar, to be honest. That is typical though (level 0 and level
             1 aren't super close to each other, and it's additionally possible there could be coding mistakes).
             The subdivided surface at level 1 should be the proper subdivision of the level-0 pyramid.
-            If we kept subdividing, we would eventually get a smooth limit surface.</li>
+            If we kept subdividing, we would eventually get a smooth limit surface. Autodesk was <a href="https://download.autodesk.com/global/docs/softimage2014/en_us/userguide/index.html?url=files/subdivs_AboutSubdivisionSurfaces.htm,topicNumber=d30e117288">nice to show</a>
+            that I'm roughly on the right track:
+            <img src="https://download.autodesk.com/global/docs/softimage2014/en_us/userguide/images/GUID-D40260F1-5A9D-4AB0-8685-D1CA0B991229-low.png" width="100"></li>
       </ul></li>
       <li>Pyramid vertices are perturbed (as a function of vertex ID) in a compute shader. This is analogous
         to animating the base mesh on the CPU, as would occur in a game/simulation.</li>
