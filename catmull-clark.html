@@ -8,63 +8,133 @@
 
   <body>
     <canvas width="512" height="512"></canvas>
-    <p>What this demo shows:<ul>
-      <li>Toggle between:<ul>
-        <li>A 5-face square pyramid</li>
-        <li>A 16-face solid that is the
-          (<a href="https://en.wikipedia.org/wiki/Catmull%E2%80%93Clark_subdivision_surface">Catmull-Clark</a>)
-          subdivided mesh of the 5-face pyramid, using the formulation of
-          <a href="https://dl.acm.org/doi/10.1145/2077341.2077347">Niessner et al.</a> <b>Why this is cool</b>:
-          Connectivity is statically generated, but the subdivision is computed dynamically in a compute shader.
-          Thus we can send a small mesh from CPU to GPU, animate that small mesh (on the CPU), and generate its
-          more detailed subdivision entirely on the GPU.</li>
-          <li>These two surfaces don't look too similar, to be honest. That is typical though (level 0 and level
-            1 aren't super close to each other, and it's additionally possible there could be coding mistakes).
-            The subdivided surface at level 1 should be the proper subdivision of the level-0 pyramid.
-            If we kept subdividing, we would eventually get a smooth limit surface. Autodesk was <a href="https://download.autodesk.com/global/docs/softimage2014/en_us/userguide/index.html?url=files/subdivs_AboutSubdivisionSurfaces.htm,topicNumber=d30e117288">nice to show</a>
+    <p>What this demo shows:</p>
+    <ul>
+      <li>
+        Toggle between:
+        <ul>
+          <li>A 5-face square pyramid</li>
+          <li>
+            A 16-face solid that is the (<a
+              href="https://en.wikipedia.org/wiki/Catmull%E2%80%93Clark_subdivision_surface"
+              >Catmull-Clark</a
+            >) subdivided mesh of the 5-face pyramid, using the formulation of
+            <a href="https://dl.acm.org/doi/10.1145/2077341.2077347"
+              >Niessner et al.</a
+            >
+            <b>Why this is cool</b>: Connectivity (at all levels of subdivision)
+            can be and is statically generated, but the subdivision is computed
+            dynamically in a compute shader. Thus we can send a small coarse
+            mesh from CPU to GPU, animate that coarse mesh on the CPU, and
+            generate its more detailed subdivision entirely on the GPU. No one
+            wants to animate a fine mesh.
+          </li>
+          <li>
+            These two surfaces don't look too similar, to be honest. That is
+            typical though (level 0 and level 1 aren't super close to each
+            other, and it's additionally possible there could be coding
+            mistakes). The subdivided surface at level 1 should be the proper
+            subdivision of the level-0 pyramid. If we kept subdividing, we would
+            eventually get a smooth limit surface. Autodesk was
+            <a
+              href="https://download.autodesk.com/global/docs/softimage2014/en_us/userguide/index.html?url=files/subdivs_AboutSubdivisionSurfaces.htm,topicNumber=d30e117288"
+              >nice to show</a
+            >
             that I'm roughly on the right track:
-            <img src="https://download.autodesk.com/global/docs/softimage2014/en_us/userguide/images/GUID-D40260F1-5A9D-4AB0-8685-D1CA0B991229-low.png" width="100"></li>
-      </ul></li>
-      <li>Pyramid vertices are perturbed (as a function of vertex ID) in a compute shader. This is analogous
-        to animating the base mesh on the CPU, as would occur in a game/simulation.</li>
+            <img
+              src="https://download.autodesk.com/global/docs/softimage2014/en_us/userguide/images/GUID-D40260F1-5A9D-4AB0-8685-D1CA0B991229-low.png"
+              width="100"
+            />
+          </li>
+        </ul>
+      </li>
+      <li>
+        What is the compute? The core of Catmull-Clark subdivision is three
+        compute kernels, which iterate over (1) all faces (computing new "face
+        points"), (2) all edges (computing new "edge points"), and (3) all
+        vertices (computing new vertices as a function of old vertices and new
+        face and edge points).
+      </li>
+      <li>
+        Additionally, pyramid vertices are perturbed (as a function of vertex
+        ID) in a compute shader, which iterates over all vertices. This is
+        analogous to animating the base mesh on the CPU, as would occur in a
+        game/simulation.
+      </li>
       <li>Rendered as indexed triangles</li>
       <li>Toggle is implemented simply by binding a different index buffer</li>
-      <li>Vertex colors are procedurally generated as a function of vertex ID</li>
-      <li>Camera is implemented in the vertex shader; it rotates around the pyramid. Camera code
-        mostly swiped from <a href="https://webgpu.github.io/webgpu-samples/?sample=rotatingCube">rotating
-          cube demo</a>.</li>
-    </ul></p>
-    <p><a href="https://webgpufundamentals.org/webgpu/lessons/webgpu-fundamentals.html">Code
-      with which I started</a></p>
-    <p>External includes that help make this work:<ul>
-      <li><a href="https://wgpu-matrix.org/docs/">wgpu-matrix</a> for modelview/projection
-         matrix operations</li>
-    </ul></p>
-    <p>Things missing from WebGPU:<ul>
+      <li>
+        Vertex colors are procedurally generated as a function of vertex ID
+      </li>
+      <li>
+        Camera is implemented in the vertex shader; it rotates around the
+        pyramid. Camera code mostly swiped from
+        <a href="https://webgpu.github.io/webgpu-samples/?sample=rotatingCube"
+          >rotating cube demo</a
+        >.
+      </li>
+    </ul>
+    <p>
+      <a
+        href="https://webgpufundamentals.org/webgpu/lessons/webgpu-fundamentals.html"
+        >Code with which I started</a
+      >
+    </p>
+    <p>External includes that help make this work:</p>
+    <ul>
+      <li>
+        <a href="https://wgpu-matrix.org/docs/">wgpu-matrix</a> for
+        modelview/projection matrix operations
+      </li>
+    </ul>
+    <p>Things missing from WebGPU:</p>
+    <ul>
       <li>Indexed quad rendering</li>
       <li>Hardware tessellation units (not sure on this, though)</li>
-    </ul></p>
-    <p>What would be fun to write that I'm secretly hoping I get to write:<ul>
+    </ul>
+    <p>What would be fun to write that I'm secretly hoping I get to write:</p>
+    <ul>
       <li>More levels of subdivision</li>
-      <li>Automatically generating all tables for that subdivision (in the CPU, at "compile time",
-        but really at runtime when the program is launched)</li>
+      <li>
+        Automatically generating all tables for that subdivision (in the CPU, at
+        "compile time", but really at runtime when the program is launched)
+      </li>
       <li>More interesting inputs than a pyramid</li>
-      <li>The whole point of Niessner's formulation is it supports sharp creases. That's currently
-        ignored in the implementation.</li>
+      <li>
+        The whole point of Niessner's formulation is it supports sharp creases.
+        That's currently ignored in the implementation; the implementation
+        generates a smooth limit surface. But real subdivision surfaces may have
+        sharp edges and/or vertices.
+      </li>
       <li>Adaptive subdivision (subdividing only where necessary)</li>
       <li>Integrating a prefix-sum for the valence-offset tables</li>
-    </ul></p>
-    <p>What could make this visually better:<ul>
-      <li>Normal vectors per face, and lighting, rather than fixed vertex colors (that, moreover,
-        aren't consistent across subdivision levels)</li>
-      <li><a href="https://webgpu.github.io/webgpu-samples/?sample=wireframe">Wireframe</a> that
-        shows the underlying mesh</li>
+    </ul>
+    <p>What could make this visually better:</p>
+    <ul>
+      <li>
+        Normal vectors per face, and lighting, rather than fixed vertex colors
+        (that, moreover, aren't consistent across subdivision levels)
+      </li>
+      <li>
+        <a href="https://webgpu.github.io/webgpu-samples/?sample=wireframe"
+          >Wireframe</a
+        >
+        that shows the underlying mesh
+      </li>
       <li>Better choice of parameters that generates a smooth animation</li>
-    </ul></p>
-    <p>What could make the (nonexistent) UI better:<ul>
-      <li><a href="https://webgpu.github.io/webgpu-samples/?sample=cameras">Camera control</a></li>
-      <li>Setting simulation parameters in the UI rather than ~hardcoded in the code</li>
-    </ul></p>
+    </ul>
+    <p>What could make the (nonexistent) UI better:</p>
+    <ul>
+      <li>
+        <a href="https://webgpu.github.io/webgpu-samples/?sample=cameras"
+          >Camera control</a
+        >
+      </li>
+      <li>
+        Setting simulation parameters in the UI rather than ~hardcoded in the
+        code
+      </li>
+    </ul>
     <script type="module">
       // inspiration: https://webgpufundamentals.org/webgpu/lessons/webgpu-fundamentals.html
 
@@ -73,23 +143,50 @@
         mat4,
       } from "https://wgpu-matrix.org/dist/3.x/wgpu-matrix.module.js";
 
-      // Q: I would like to pass in a struct as a uniform,
-      // but I couldn't get that to work, and converted to an
-      // array instead
-      var params_DOESNOTWORK = {
-        UPDATE_INTERVAL: 200.0, // Update every <- ms
-        time: 0.0,
-        timestep: 1.0,
-      };
-      const params = new Float32Array([200.0, 0.0, 1.0]);
-      // Q: the following seems bad since it has to be manually updated
-      const params_length = 3 * Float32Array.BYTES_PER_ELEMENT;
+      // for uniform handling
+      import {
+        makeShaderDataDefinitions,
+        makeStructuredView,
+      } from "https://greggman.github.io/webgpu-utils/dist/1.x/webgpu-utils.module.js";
 
       const adapter = await navigator.gpu?.requestAdapter();
       const device = await adapter?.requestDevice();
       if (!device) {
         fail("Fatal error: Device does not support WebGPU.");
       }
+
+      // using webgpu-utils to have one struct for uniforms across all kernels
+      // Q: Is this the right way to do things or is it better to have different
+      //   uniform structures for each kernel?
+      const uniforms_code = /* wgsl */ `
+        struct MyUniforms {
+          UPDATE_INTERVAL: f32,
+          time: f32,
+          timestep: f32,
+        };
+        @group(0) @binding(0) var<uniform> myUniforms: MyUniforms;
+      `;
+      /* why the @group/@binding? Gregg Tavares:
+       * "It's necessary for them to show up in defs.uniforms or defs.storages. You
+       * can use defs.structs to pull out a struct, separately from a group/binding (I think?)"
+       */
+      const uniforms_defs = makeShaderDataDefinitions(uniforms_code);
+      const myUniformValues = makeStructuredView(
+        uniforms_defs.uniforms.myUniforms
+      );
+
+      const uniforms_buffer = device.createBuffer({
+        size: myUniformValues.arrayBuffer.byteLength,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      });
+
+      myUniformValues.set({
+        UPDATE_INTERVAL: 200.0, // Update every <- ms
+        time: 0.0,
+        timestep: 1.0,
+      });
+
+      device.queue.writeBuffer(uniforms_buffer, 0, myUniformValues.arrayBuffer);
 
       const canvas = document.querySelector("canvas");
       const context = canvas.getContext("webgpu");
@@ -124,6 +221,9 @@
       const vertices_object_size = 4; // float4s (but ignore w coord for now)
       // float3s were fraught with peril (padding)
       const vertices = new Float32Array(vertices_size * vertices_object_size);
+      const vertex_normals = new Float32Array(
+        vertices_size * vertices_object_size
+      );
 
       /* Below are the data structures used to represent subdivision tables.
        * These should be computed at compile time. Most are specified by Niessner
@@ -132,85 +232,89 @@
 
       // prettier-ignore
       const base_vertex_positions = new Float32Array([
-                            0, 0, 1, 1,   // vertex 0
-                            -1, 1, 0, 1,  // vertex 1
-                            -1, -1, 0, 1, // vertex 2
-                            1, -1, 0, 1,  // vertex 3
-                            1, 1, 0, 1,   // vertex 4
-                          ]); // use this ONLY to populate (part of) the vertex buffer
+                                0, 0, 1, 1,   // vertex 0
+                                -1, 1, 0, 1,  // vertex 1
+                                -1, -1, 0, 1, // vertex 2
+                                1, -1, 0, 1,  // vertex 3
+                                1, 1, 0, 1,   // vertex 4
+                              ]); // use this ONLY to populate (part of) the vertex buffer
       for (var i = 0; i < base_vertex_positions.length; i++) {
         vertices[i] = base_vertex_positions[i];
       }
       // never use base_vertex_positions again
+
+      for (var i = 0; i < vertex_normals.length; i++) {
+        vertex_normals[i] = 0.0;
+      }
 
       // Q: Is a flattened 1D array the right way to represent base faces?
       // should it instead be a 2D array, [face][vertex]?
       // i am guessing flattened data structures (like this one) are preferred
       // prettier-ignore
       const base_faces = new Uint32Array([ /* FIG4 */
-                            0, 1, 2, // vertices in face 0
-                            0, 2, 3, //         ... face 1
-                            0, 3, 4, //         ... face 2
-                            0, 4, 1, //         ... face 3
-                            4, 3, 2, 1, //      ... face 4
-                          ]);
+                                0, 1, 2, // vertices in face 0
+                                0, 2, 3, //         ... face 1
+                                0, 3, 4, //         ... face 2
+                                0, 4, 1, //         ... face 3
+                                4, 3, 2, 1, //      ... face 4
+                              ]);
       // the following is manually generated tri indexes from base_faces
       // TODO: this could totally be generated programmatically from
       //   base_faces plus base_face_valence
       // prettier-ignore
       const base_triangle_indices = new Uint32Array([
-                            0, 1, 2, // vertices in tri 0
-                            0, 2, 3, //         ... tri 1
-                            0, 3, 4, //         ... tri 2
-                            0, 4, 1, //         ... tri 3
-                            4, 3, 2, //         ... tri 4
-                            4, 2, 1, //         ... tri 5
-                          ]);
+                                0, 1, 2, // vertices in tri 0
+                                0, 2, 3, //         ... tri 1
+                                0, 3, 4, //         ... tri 2
+                                0, 4, 1, //         ... tri 3
+                                4, 3, 2, //         ... tri 4
+                                4, 2, 1, //         ... tri 5
+                              ]);
 
       // the following should be generated at compile time from base_faces
       // done manually here
       // these are quads and generate triangles next
       // prettier-ignore
       const subdiv_1_quad_indices = new Uint32Array([
-        18, 11, 5, 10, // top ring
-        18, 10, 6, 13,
-        18, 13, 7, 15,
-        18, 15, 8, 11,
-        10, 5, 12, 20, // lower ring
-        6, 10, 20, 14,
-        13, 6, 14, 21,
-        7, 13, 21, 16,
-        15, 7, 16, 22,
-        8, 15, 22, 17,
-        11, 8, 17, 19,
-        5, 11, 19, 12,
-        9, 14, 20, 12, // pyramid base
-        9, 16, 21, 14,
-        9, 17, 22, 16,
-        9, 12, 19, 17,
-        // need base
-        // should be quad 9
-      ]);
+            18, 11, 5, 10, // top ring
+            18, 10, 6, 13,
+            18, 13, 7, 15,
+            18, 15, 8, 11,
+            10, 5, 12, 20, // lower ring
+            6, 10, 20, 14,
+            13, 6, 14, 21,
+            7, 13, 21, 16,
+            15, 7, 16, 22,
+            8, 15, 22, 17,
+            11, 8, 17, 19,
+            5, 11, 19, 12,
+            9, 14, 20, 12, // pyramid base
+            9, 16, 21, 14,
+            9, 17, 22, 16,
+            9, 12, 19, 17,
+            // need base
+            // should be quad 9
+          ]);
       // the above should programmatically generate the below
       // prettier-ignore
       const subdiv_1_triangle_indices = new Uint32Array([
-        18, 11, 5,  18, 5, 10, // top ring
-        18, 10, 6,  18, 6, 13,
-        18, 13, 7,  18, 7, 15,
-        18, 15, 8,  18, 8, 11,
-        10, 5, 12,  10, 12, 20, // lower ring
-        6, 10, 20,  6, 20, 14,
-        13, 6, 14,  13, 14, 21,
-        7, 13, 21,  7, 21, 16,
-        15, 7, 16,  15, 16, 22,
-        8, 15, 22,  8, 22, 17,
-        11, 8, 17,  11, 17, 19,
-        5, 11, 19,  5, 19, 12,
-        9, 14, 20,  9, 20, 12, // pyramid base
-        9, 16, 21,  9, 21, 14,
-        9, 17, 22,  9, 22, 16,
-        9, 12, 19,  9, 19, 17,
-      ]);
+            18, 11, 5,  18, 5, 10, // top ring
+            18, 10, 6,  18, 6, 13,
+            18, 13, 7,  18, 7, 15,
+            18, 15, 8,  18, 8, 11,
+            10, 5, 12,  10, 12, 20, // lower ring
+            6, 10, 20,  6, 20, 14,
+            13, 6, 14,  13, 14, 21,
+            7, 13, 21,  7, 21, 16,
+            15, 7, 16,  15, 16, 22,
+            8, 15, 22,  8, 22, 17,
+            11, 8, 17,  11, 17, 19,
+            5, 11, 19,  5, 19, 12,
+            9, 14, 20,  9, 20, 12, // pyramid base
+            9, 16, 21,  9, 21, 14,
+            9, 17, 22,  9, 22, 16,
+            9, 12, 19,  9, 19, 17,
+          ]);
 
       const base_face_valence = new Uint32Array([3, 3, 3, 3, 4]); /* FIG4 */
       // base_face_offset is exclusive_scan('+', base_face_valence)
@@ -221,19 +325,19 @@
 
       // prettier-ignore
       const base_edges = new Uint32Array([ /* FIG4 */
-                            0, 5, 2, 6,
-                            1, 5, 0, 8,
-                            2, 5, 1, 9,
-                            0, 6, 3, 7,
-                            3, 6, 2, 9,
-                            0, 7, 4, 8,
-                            4, 7, 3, 9,
-                            1, 8, 4, 9,
-                          ]);
+                                0, 5, 2, 6,
+                                1, 5, 0, 8,
+                                2, 5, 1, 9,
+                                0, 6, 3, 7,
+                                3, 6, 2, 9,
+                                0, 7, 4, 8,
+                                4, 7, 3, 9,
+                                1, 8, 4, 9,
+                              ]);
       const edges_object_size = 4; // (two faces, two edges)
       const base_edges_count = base_edges.length / edges_object_size;
 
-      const base_vertex_valence = new Uint32Array([4, 3, 3, 3, 3]);  /* FIG4 */
+      const base_vertex_valence = new Uint32Array([4, 3, 3, 3, 3]); /* FIG4 */
       // base_vertex_offset is 2 * exclusive_scan('+', base_vertex_valence)
       // TODO: compute that scan in a compute shader
       const base_vertex_offset = new Uint32Array([0, 8, 14, 20, 26]); /* FIG4 */
@@ -241,45 +345,39 @@
       const base_vertex_index = new Uint32Array([0, 1, 2, 3, 4]); /* FIG4 */
       // prettier-ignore
       const base_vertices = new Uint32Array([ /* FIG4 */
-                            4, 8, 1, 5, 2, 6, 3, 7,
-                            4, 9, 2, 5, 0, 8,
-                            3, 6, 0, 5, 1, 9,
-                            4, 7, 0, 6, 2, 9,
-                            1, 8, 0, 7, 3, 9,
-                          ]);
+                                4, 8, 1, 5, 2, 6, 3, 7,
+                                4, 9, 2, 5, 0, 8,
+                                3, 6, 0, 5, 1, 9,
+                                4, 7, 0, 6, 2, 9,
+                                1, 8, 0, 7, 3, 9,
+                              ]);
 
       const perturbInputVerticesModule = device.createShaderModule({
         label: "perturb input vertices module",
-        code: /* wgsl */`
-          struct Params {
-            UPDATE_INTERVAL:f32,
-            time:f32,
-            timestep:f32,
-          }
-          /* input + output */
-          @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
-          /* uniform: time */
-          @group(0) @binding(1) var<uniform> params: Params;
-          @compute @workgroup_size(1) fn perturbInputVerticesKernel(
-                   @builtin(global_invocation_id) id: vec3u) {
-            let i = id.x;
-            let t = params.time;
-            let stepsize = 0.1;
-            let angle_start = f32(i);
-            /* philosophy of animating base vertices:
-             *
-             * - vertex should not move in aggregate over time
-             * - each vertex should move ~differently
-             *
-             * design: each vertex moves in a "random" direction by a fixed amt
-             *         starting direction differs per vertex ("angle_start")
-             *         movements cancel each other out over time
-             */
-            vertices[i] += vec3(stepsize * cos(angle_start + t),
-                                stepsize * sin(angle_start + t),
-                                stepsize * 0.5 * sin(angle_start + t));
-          }
-        `,
+        code: /* wgsl */ `
+              ${uniforms_code} /* @binding(0) is uniforms */
+              /* input + output */
+              @group(0) @binding(1) var<storage, read_write> vertices: array<vec3f>;
+              @compute @workgroup_size(1) fn perturbInputVerticesKernel(
+                       @builtin(global_invocation_id) id: vec3u) {
+                let i = id.x;
+                let t = myUniforms.time;
+                let stepsize = 0.1;
+                let angle_start = f32(i);
+                /* philosophy of animating base vertices:
+                 *
+                 * - vertex should not move in aggregate over time
+                 * - each vertex should move ~differently
+                 *
+                 * design: each vertex moves in a "random" direction by a fixed amt
+                 *         starting direction differs per vertex ("angle_start")
+                 *         movements cancel each other out over time
+                 */
+                vertices[i] += vec3(stepsize * cos(angle_start + t),
+                                    stepsize * sin(angle_start + t),
+                                    stepsize * 0.5 * sin(angle_start + t));
+              }
+            `,
       });
 
       /** (1) Calculation of face points
@@ -295,40 +393,40 @@
 
       const facePointsModule = device.createShaderModule({
         label: "face points module",
-        code: /* wgsl */`
-          /* input + output */
-          @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
-                  /* input */
-          @group(0) @binding(1) var<storage, read> base_faces: array<u32>;
-          @group(0) @binding(2) var<storage, read> base_face_offset: array<u32>;
-          @group(0) @binding(3) var<storage, read> base_face_valence: array<u32>;
+        code: /* wgsl */ `
+              /* input + output */
+              @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
+                      /* input */
+              @group(0) @binding(1) var<storage, read> base_faces: array<u32>;
+              @group(0) @binding(2) var<storage, read> base_face_offset: array<u32>;
+              @group(0) @binding(3) var<storage, read> base_face_valence: array<u32>;
 
-          /** Niessner 2012:
-            * "The face kernel requires two buffers: one index buffer, whose
-            * entries are the vertex buffer indices for each vertex of the face; a
-            * second buffer stores the valence of the face along with an offset
-            * into the index buffer for the first vertex of each face."
-            *
-            * implementation above: "index buffer" is base_faces
-            *                       "valence of the face" is base_face_valence
-            *                       "offset into the index buffer" is base_face_offset
-            */
+              /** Niessner 2012:
+                * "The face kernel requires two buffers: one index buffer, whose
+                * entries are the vertex buffer indices for each vertex of the face; a
+                * second buffer stores the valence of the face along with an offset
+                * into the index buffer for the first vertex of each face."
+                *
+                * implementation above: "index buffer" is base_faces
+                *                       "valence of the face" is base_face_valence
+                *                       "offset into the index buffer" is base_face_offset
+                */
 
-          @compute @workgroup_size(1) fn facePointsKernel(
-            @builtin(global_invocation_id) id: vec3u) {
-            let i = id.x;
-            /* TODO: exit if my index is larger than the size of the input */
+              @compute @workgroup_size(1) fn facePointsKernel(
+                @builtin(global_invocation_id) id: vec3u) {
+                let i = id.x;
+                /* TODO: exit if my index is larger than the size of the input */
 
-            let out = i + ${vertices_write_ptr};
-            vertices[out] = vec3f(0,0,0);
-            for (var j: u32 = base_face_offset[i]; j < base_face_offset[i] + base_face_valence[i]; j++) {
-              let face_vertex = base_faces[j];
-              vertices[out] += vertices[face_vertex];
-            }
-            vertices[out] /= f32(base_face_valence[i]);
-            // TODO: decide on vec3f or vec4f and set w if so
-          }
-        `,
+                let out = i + ${vertices_write_ptr};
+                vertices[out] = vec3f(0,0,0);
+                for (var j: u32 = base_face_offset[i]; j < base_face_offset[i] + base_face_valence[i]; j++) {
+                  let face_vertex = base_faces[j];
+                  vertices[out] += vertices[face_vertex];
+                }
+                vertices[out] /= f32(base_face_valence[i]);
+                // TODO: decide on vec3f or vec4f and set w if so
+              }
+            `,
       });
 
       vertices_write_ptr += base_faces_count;
@@ -352,32 +450,32 @@
 
       const edgePointsModule = device.createShaderModule({
         label: "edge points module",
-        code: /* wgsl */`
-          /* input + output */
-          @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
-          /* input */
-          @group(0) @binding(1) var<storage, read> base_edges: array<vec4u>;
+        code: /* wgsl */ `
+              /* input + output */
+              @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
+              /* input */
+              @group(0) @binding(1) var<storage, read> base_edges: array<vec4u>;
 
-          /** "Since a single (non-boundary) edge always has two incident faces and vertices,
-           * the edge kernel needs a buffer for the indices of these entities."
-           *
-           * implementation above: "a buffer for the indices of these entities" is base_edges
-           */
+              /** "Since a single (non-boundary) edge always has two incident faces and vertices,
+               * the edge kernel needs a buffer for the indices of these entities."
+               *
+               * implementation above: "a buffer for the indices of these entities" is base_edges
+               */
 
-          @compute @workgroup_size(1) fn edgePointsKernel(
-            @builtin(global_invocation_id) id: vec3u) {
-              let i = id.x;
-              /* TODO: exit if my index is larger than the size of the input */
+              @compute @workgroup_size(1) fn edgePointsKernel(
+                @builtin(global_invocation_id) id: vec3u) {
+                  let i = id.x;
+                  /* TODO: exit if my index is larger than the size of the input */
 
-              let out = i + ${vertices_write_ptr};
-              let edge_id = i;
-              vertices[out] = vec3f(0,0,0);
-              for (var j: u32 = 0; j < 4; j++) {
-                vertices[out] += vertices[base_edges[edge_id][j]];
+                  let out = i + ${vertices_write_ptr};
+                  let edge_id = i;
+                  vertices[out] = vec3f(0,0,0);
+                  for (var j: u32 = 0; j < 4; j++) {
+                    vertices[out] += vertices[base_edges[edge_id][j]];
+                  }
+                  vertices[out] *= 0.25;
               }
-              vertices[out] *= 0.25;
-          }
-        `,
+            `,
       });
 
       vertices_write_ptr += base_edges_count;
@@ -422,39 +520,39 @@
 
       const vertexPointsModule = device.createShaderModule({
         label: "vertex points module",
-        code: /* wgsl */`
-          /* input + output */
-          @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
-          /* input */
-          @group(0) @binding(1) var<storage, read> base_vertices: array<u32>;
-          @group(0) @binding(2) var<storage, read> base_vertex_offset: array<u32>;
-          @group(0) @binding(3) var<storage, read> base_vertex_valence: array<u32>;
-          @group(0) @binding(4) var<storage, read> base_vertex_index: array<u32>;
+        code: /* wgsl */ `
+              /* input + output */
+              @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
+              /* input */
+              @group(0) @binding(1) var<storage, read> base_vertices: array<u32>;
+              @group(0) @binding(2) var<storage, read> base_vertex_offset: array<u32>;
+              @group(0) @binding(3) var<storage, read> base_vertex_valence: array<u32>;
+              @group(0) @binding(4) var<storage, read> base_vertex_index: array<u32>;
 
-          /** "We use an index buffer containing the indices of the incident edge and
-           * vertex points."
-           *
-           * implementation above: "a buffer for the indices of these entities" is base_vertices
-           */
+              /** "We use an index buffer containing the indices of the incident edge and
+               * vertex points."
+               *
+               * implementation above: "a buffer for the indices of these entities" is base_vertices
+               */
 
-          @compute @workgroup_size(1) fn vertexPointsKernel(
-            @builtin(global_invocation_id) id: vec3u) {
-              let i = id.x;
-              /* TODO: exit if my index is larger than the size of the input */
+              @compute @workgroup_size(1) fn vertexPointsKernel(
+                @builtin(global_invocation_id) id: vec3u) {
+                  let i = id.x;
+                  /* TODO: exit if my index is larger than the size of the input */
 
-              let out = i + ${vertices_write_ptr};
-              let valence = base_vertex_valence[i];
-              vertices[out] = vec3f(0,0,0);
-              for (var j: u32 = base_vertex_offset[i]; j < base_vertex_offset[i] + 2 * base_vertex_valence[i]; j++) {
-                let base_vertex = base_vertices[j];
-                vertices[out] += vertices[base_vertex];
+                  let out = i + ${vertices_write_ptr};
+                  let valence = base_vertex_valence[i];
+                  vertices[out] = vec3f(0,0,0);
+                  for (var j: u32 = base_vertex_offset[i]; j < base_vertex_offset[i] + 2 * base_vertex_valence[i]; j++) {
+                    let base_vertex = base_vertices[j];
+                    vertices[out] += vertices[base_vertex];
+                  }
+                  vertices[out] /= f32(valence);
+                  vertices[out] += f32(valence - 2) * vertices[base_vertex_index[i]];
+                  vertices[out] /= f32(valence);
+                  // TODO: decide on vec3f or vec4f and set w if so
               }
-              vertices[out] /= f32(valence);
-              vertices[out] += f32(valence - 2) * vertices[base_vertex_index[i]];
-              vertices[out] /= f32(valence);
-              // TODO: decide on vec3f or vec4f and set w if so
-          }
-        `,
+            `,
       });
 
       /** output vertices from vertex kernel, for debugging
@@ -465,43 +563,90 @@
        * 22 | 0.40740740299224854, 0.40740740299224854, 0.18518519401550293, 0
        */
 
+      const facetNormalsModule = device.createShaderModule({
+        label: "compute facet normals module",
+        code: /* wgsl */ `
+              /* output */
+              @group(0) @binding(0) var<storage, read_write> vertex_normals: array<vec3f>;
+              /* input */
+              @group(0) @binding(1) var<storage, read> vertices: array<vec3f>;
+              @group(0) @binding(2) var<storage, read> base_triangle_indices: array<vec3f>;
+              @group(0) @binding(3) var<storage, read> subdiv_1_triangle_indices: array<vec3f>;
+
+              /** What I actually want to do here is concatenate the two sets of indices,
+               * because I'm doing the same computation on both of them.
+               * This requires I know the length of both index vectors.
+               */
+
+               /** Algorithm:
+                * Iterate over all triangles.
+                */
+              @compute @workgroup_size(1) fn facetNormalsKernel(
+                @builtin(global_invocation_id) id: vec3u) {
+                  let i = id.x;
+                  /* TODO: exit if my index is larger than the size of the input */
+                  let base_triangles_count = 6; // TODO: pass this into the kernel
+                  let subdiv_1_triangles_count = 32;
+                  if (i < base_triangles_count) {
+                    my_triangle = base_triangles[i];
+                  } else if (i < (base_triangles_count + subdiv_1_triangles_count)) {
+                    my_triangle = subdiv_1_triangles[i - base_triangles_count];
+                  } else {
+                   return;
+                  }
+
+                  let out = i + ${vertices_write_ptr};
+                  let valence = base_vertex_valence[i];
+                  vertices[out] = vec3f(0,0,0);
+                  for (var j: u32 = base_vertex_offset[i]; j < base_vertex_offset[i] + 2 * base_vertex_valence[i]; j++) {
+                    let base_vertex = base_vertices[j];
+                    vertices[out] += vertices[base_vertex];
+                  }
+                  vertices[out] /= f32(valence);
+                  vertices[out] += f32(valence - 2) * vertices[base_vertex_index[i]];
+                  vertices[out] /= f32(valence);
+                  // TODO: decide on vec3f or vec4f and set w if so
+              }
+            `,
+      });
+
       const renderModule = device.createShaderModule({
         label: "render module",
-        code: /* wgsl */`
-          struct VertexInput {
-            @location(0) pos: vec4f,
-            @builtin(vertex_index) vertex_index: u32,
-          };
+        code: /* wgsl */ `
+              struct VertexInput {
+                @location(0) pos: vec4f,
+                @builtin(vertex_index) vertex_index: u32,
+              };
 
-          struct VertexOutput {
-            @builtin(position) pos: vec4f,
-            @location(0) color: vec4f,
-          };
+              struct VertexOutput {
+                @builtin(position) pos: vec4f,
+                @location(0) color: vec4f,
+              };
 
-          // https://webgpu.github.io/webgpu-samples/?sample=rotatingCube#basic.vert.wgsl
-          struct Uniforms {
-            modelViewProjectionMatrix : mat4x4f,
-          }
-          @binding(0) @group(0) var<uniform> uniforms : Uniforms;
+              // https://webgpu.github.io/webgpu-samples/?sample=rotatingCube#basic.vert.wgsl
+              struct Uniforms {
+                modelViewProjectionMatrix : mat4x4f,
+              }
+              @binding(0) @group(0) var<uniform> uniforms : Uniforms;
 
-          @vertex
-          fn vertexMain(@location(0) pos: vec4f,
-                        @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
-            var output: VertexOutput;
-            output.pos = uniforms.modelViewProjectionMatrix * pos;
-            output.color = vec4f( // this generates 64 different colors
-              0.35 + select(0, 0.6, (vertex_index & 1) != 0) - select(0, 0.3, (vertex_index & 8) != 0),
-              0.35 + select(0, 0.6, (vertex_index & 2) != 0) - select(0, 0.3, (vertex_index & 16) != 0),
-              0.35 + select(0, 0.6, (vertex_index & 4) != 0) - select(0, 0.3, (vertex_index & 32) != 0),
-              0.75 /* partial transparency might aid debugging */);
-            return output;
-          }
+              @vertex
+              fn vertexMain(@location(0) pos: vec4f,
+                            @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
+                var output: VertexOutput;
+                output.pos = uniforms.modelViewProjectionMatrix * pos;
+                output.color = vec4f( // this generates 64 different colors
+                  0.35 + select(0, 0.6, (vertex_index & 1) != 0) - select(0, 0.3, (vertex_index & 8) != 0),
+                  0.35 + select(0, 0.6, (vertex_index & 2) != 0) - select(0, 0.3, (vertex_index & 16) != 0),
+                  0.35 + select(0, 0.6, (vertex_index & 4) != 0) - select(0, 0.3, (vertex_index & 32) != 0),
+                  0.75 /* partial transparency might aid debugging */);
+                return output;
+              }
 
-          @fragment
-          fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
-            return input.color;
-          }
-        `,
+              @fragment
+              fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
+                return input.color;
+              }
+            `,
       });
 
       const perturb_pipeline = device.createComputePipeline({
@@ -616,6 +761,17 @@
       });
       device.queue.writeBuffer(base_vertices_buffer, 0, base_vertices);
 
+      const vertex_normals_buffer = device.createBuffer({
+        label: "vertex normals buffer",
+        size: vertex_normals.byteLength,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      });
+      /** Q: This is all zeroes, is there an easier way to do this than
+       * copy a bunch of zeroes? (It does have to be initialized given
+       * how I am using it.)
+       */
+      device.queue.writeBuffer(vertex_normals_buffer, 0, vertex_normals);
+
       const base_vertex_offset_buffer = device.createBuffer({
         label: "vertex offset",
         size: base_vertex_offset.byteLength,
@@ -667,13 +823,6 @@
         subdiv_1_triangle_indices
       );
 
-      const params_buffer = device.createBuffer({
-        label: "params buffer",
-        size: params_length,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-      });
-      device.queue.writeBuffer(params_buffer, 0, params);
-
       const mvx_length = 4 * 16; /* float32 4x4 matrix */
       const mvx_buffer = device.createBuffer({
         label: "modelview + transformation matrix uniform buffer",
@@ -706,8 +855,8 @@
         label: "bindGroup for perturb input vertices kernel",
         layout: perturb_pipeline.getBindGroupLayout(0),
         entries: [
-          { binding: 0, resource: { buffer: vertices_buffer } },
-          { binding: 1, resource: { buffer: params_buffer } },
+          { binding: 0, resource: { buffer: uniforms_buffer } },
+          { binding: 1, resource: { buffer: vertices_buffer } },
         ],
       });
 
@@ -761,7 +910,7 @@
       function getTransformationMatrix() {
         const viewMatrix = mat4.identity();
         mat4.translate(viewMatrix, vec3.fromValues(0, 0, -3), viewMatrix);
-        var now = params[1] / 100;
+        var now = myUniformValues.views.time[0] / 100;
         mat4.rotate(
           viewMatrix,
           vec3.fromValues(Math.sin(now), Math.cos(now), 0),
@@ -859,14 +1008,19 @@
         const mesh_duration = 10;
         var start_idx = -1;
         var end_idx = -1;
-        switch((params[1] / mesh_duration) & 1) {
+        var now = myUniformValues.views.time[0];
+
+        switch ((now / mesh_duration) & 1) {
           case 0:
             render_pass.setIndexBuffer(base_triangle_indices_buffer, "uint32");
             start_idx = 0; // this is just to draw a different set of tris
             end_idx = base_triangle_indices.length;
             break;
           case 1:
-            render_pass.setIndexBuffer(subdiv_1_triangle_indices_buffer, "uint32");
+            render_pass.setIndexBuffer(
+              subdiv_1_triangle_indices_buffer,
+              "uint32"
+            );
             start_idx = 0; // this is just to draw a different set of tris
             end_idx = subdiv_1_triangle_indices.length;
             break;
@@ -893,15 +1047,22 @@
 
         console.log("base vertex positions", vertices);
         console.log("final vertex buffer", result);
-        console.log("time", params[1]); //// params.timestep);
+        ////        console.log("time", myUniformValues.views.time);
+        console.log("time", myUniformValues.views.time[0]);
         ////        params.time += params.timestep;
-        params[1] += params[2];
-        device.queue.writeBuffer(params_buffer, 0, params);
+        myUniformValues.views.time[0] =
+          myUniformValues.views.time[0] + myUniformValues.views.timestep[0];
+        ///        myUniformValues.views.time += myUniformValues.views.timestep;
+        device.queue.writeBuffer(
+          uniforms_buffer,
+          0,
+          myUniformValues.arrayBuffer
+        );
       }
       renderLoop(); // render first frame right away
 
       // Schedule renderLoop() to run repeatedly
-      setInterval(renderLoop, params[0]); //// params.UPDATE_INTERVAL);
+      setInterval(renderLoop, myUniformValues.views.UPDATE_INTERVAL);
 
       function fail(msg) {
         // eslint-disable-next-line no-alert
