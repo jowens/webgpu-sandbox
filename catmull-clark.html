@@ -156,6 +156,9 @@
       }
 
       // using webgpu-utils to have one struct for uniforms across all kernels
+      // Seems kind of weird that struct is a WGSL/GPU struct, but that seems
+      //   to be the only option
+      // the reason I want a struct is so objects can be named and not "uniforms[5]"
       // Q: Is this the right way to do things or is it better to have different
       //   uniform structures for each kernel?
       const uniforms_code = /* wgsl */ `
@@ -175,15 +178,15 @@
         uniforms_defs.uniforms.myUniforms
       );
 
-      const uniforms_buffer = device.createBuffer({
-        size: myUniformValues.arrayBuffer.byteLength,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-      });
-
       myUniformValues.set({
         UPDATE_INTERVAL: 200.0, // Update every <- ms
         time: 0.0,
         timestep: 1.0,
+      });
+
+      const uniforms_buffer = device.createBuffer({
+        size: myUniformValues.arrayBuffer.byteLength,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
       });
 
       device.queue.writeBuffer(uniforms_buffer, 0, myUniformValues.arrayBuffer);
@@ -355,7 +358,7 @@
       const perturbInputVerticesModule = device.createShaderModule({
         label: "perturb input vertices module",
         code: /* wgsl */ `
-              ${uniforms_code} /* @binding(0) is uniforms */
+              ${uniforms_code} /* this specifies @group(0) @binding(0) */
               /* input + output */
               @group(0) @binding(1) var<storage, read_write> vertices: array<vec3f>;
               @compute @workgroup_size(1) fn perturbInputVerticesKernel(
@@ -540,11 +543,11 @@
                   let i = id.x;
                   /* TODO: exit if my index is larger than the size of the input */
 
-                  let out = i + ${vertices_write_ptr};
-                  let valence = base_vertex_valence[i];
+                  var out = i + ${vertices_write_ptr};
+                  var valence = base_vertex_valence[i];
                   vertices[out] = vec3f(0,0,0);
                   for (var j: u32 = base_vertex_offset[i]; j < base_vertex_offset[i] + 2 * base_vertex_valence[i]; j++) {
-                    let base_vertex = base_vertices[j];
+                    var base_vertex = base_vertices[j];
                     vertices[out] += vertices[base_vertex];
                   }
                   vertices[out] /= f32(valence);
@@ -570,8 +573,8 @@
               @group(0) @binding(0) var<storage, read_write> vertex_normals: array<vec3f>;
               /* input */
               @group(0) @binding(1) var<storage, read> vertices: array<vec3f>;
-              @group(0) @binding(2) var<storage, read> base_triangle_indices: array<vec3f>;
-              @group(0) @binding(3) var<storage, read> subdiv_1_triangle_indices: array<vec3f>;
+              @group(0) @binding(2) var<storage, read> base_triangle_indices: array<vec3u>;
+              @group(0) @binding(3) var<storage, read> subdiv_1_triangle_indices: array<vec3u>;
 
               /** What I actually want to do here is concatenate the two sets of indices,
                * because I'm doing the same computation on both of them.
@@ -579,33 +582,36 @@
                */
 
                /** Algorithm:
-                * Iterate over all triangles.
+                * For tri in all triangles:
+                *   Fetch all 3 vertices of tri
+                *   Compute normalize(cross(v1-v0, v2-v0))
+                *   For each vertex in tri:
+                *     Atomically add it to vertex_normals[vertex]
+                *     /* Can't do this! No f32 atomics */
+                * For vertex in all vertices:
+                *   Normalize vertex_normals[vertex]
                 */
               @compute @workgroup_size(1) fn facetNormalsKernel(
                 @builtin(global_invocation_id) id: vec3u) {
-                  let i = id.x;
+                  var i = id.x;
                   /* TODO: exit if my index is larger than the size of the input */
-                  let base_triangles_count = 6; // TODO: pass this into the kernel
-                  let subdiv_1_triangles_count = 32;
+                  let base_triangles_count = 6u; // TODO: pass this into the kernel
+                  let subdiv_1_triangles_count = 32u;
+                  var my_triangles_vertices: vec3u;
                   if (i < base_triangles_count) {
-                    my_triangle = base_triangles[i];
+                    my_triangles_vertices = base_triangle_indices[i];
                   } else if (i < (base_triangles_count + subdiv_1_triangles_count)) {
-                    my_triangle = subdiv_1_triangles[i - base_triangles_count];
+                    my_triangles_vertices = subdiv_1_triangle_indices[i - base_triangles_count];
                   } else {
-                   return;
+                    return;
                   }
+                  // my_triangles_vertices is a vec3 of indices into vertices
+                  // Q: Can I make this a vector of points?
 
-                  let out = i + ${vertices_write_ptr};
-                  let valence = base_vertex_valence[i];
-                  vertices[out] = vec3f(0,0,0);
-                  for (var j: u32 = base_vertex_offset[i]; j < base_vertex_offset[i] + 2 * base_vertex_valence[i]; j++) {
-                    let base_vertex = base_vertices[j];
-                    vertices[out] += vertices[base_vertex];
-                  }
-                  vertices[out] /= f32(valence);
-                  vertices[out] += f32(valence - 2) * vertices[base_vertex_index[i]];
-                  vertices[out] /= f32(valence);
-                  // TODO: decide on vec3f or vec4f and set w if so
+                  var v0: vec3f = vertices[my_triangles_vertices[0]];
+                  var v1: vec3f = vertices[my_triangles_vertices[1]];
+                  var v2: vec3f = vertices[my_triangles_vertices[2]];
+                  vertex_normals[i] = normalize(cross(v1-v0, v2-v0));
               }
             `,
       });
@@ -1047,12 +1053,11 @@
 
         console.log("base vertex positions", vertices);
         console.log("final vertex buffer", result);
-        ////        console.log("time", myUniformValues.views.time);
         console.log("time", myUniformValues.views.time[0]);
-        ////        params.time += params.timestep;
+        // increment time
         myUniformValues.views.time[0] =
           myUniformValues.views.time[0] + myUniformValues.views.timestep[0];
-        ///        myUniformValues.views.time += myUniformValues.views.timestep;
+        // TODO: I should really only writeBuffer in one place in the code
         device.queue.writeBuffer(
           uniforms_buffer,
           0,
