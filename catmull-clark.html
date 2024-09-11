@@ -158,7 +158,6 @@
       //   uniform structures for each kernel?
       const uniforms_code = /* wgsl */ `
         struct MyUniforms {
-          REFRESH_INTERVAL: f32,
           ROTATE_CAMERA_SPEED: f32,
           TOGGLE_DURATION: f32,
           WIGGLE_MAGNITUDE: f32,
@@ -176,7 +175,6 @@
       const uni = makeStructuredView(uniforms_defs.uniforms.myUniforms);
 
       uni.set({
-        REFRESH_INTERVAL: 20.0, // Update every <- ms
         ROTATE_CAMERA_SPEED: 0.01, // how quickly camera rotates
         TOGGLE_DURATION: 200.0, // number of timesteps between model toggle
         WIGGLE_MAGNITUDE: 0.025, // how much vertices are perturbed
@@ -1018,7 +1016,7 @@
         return model_view_projection_matrix;
       }
 
-      async function render_loop() {
+      async function frame() {
         /* Q: Is this the right way to set up a render loop,
          *, e.g., the right things are inside it and outside it? */
         /* Q: is "async" OK? It has an async fn within it. */
@@ -1187,11 +1185,9 @@
         uni.views.time[0] = uni.views.time[0] + uni.views.timestep[0];
         // TODO: I should really only writeBuffer in one place in the code
         device.queue.writeBuffer(uniforms_buffer, 0, uni.arrayBuffer);
+        requestAnimationFrame(frame);
       }
-      render_loop(); // render first frame right away
-
-      // Schedule renderLoop() to run repeatedly
-      setInterval(render_loop, uni.views.REFRESH_INTERVAL);
+      requestAnimationFrame(frame);
 
       function fail(msg) {
         // eslint-disable-next-line no-alert
