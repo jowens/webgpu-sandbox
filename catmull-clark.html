@@ -222,10 +222,11 @@
 
       const vertices_size = 23;
       const vertices_object_size = 4; // float4s (but ignore w coord for now)
+      const normals_object_size = 4; // float4s (but ignore w coord for now)
       // float3s were fraught with peril (padding)
       const vertices = new Float32Array(vertices_size * vertices_object_size);
       const vertex_normals = new Float32Array(
-        vertices_size * vertices_object_size
+        vertices_size * normals_object_size
       );
 
       /* Below are the data structures used to represent subdivision tables.
@@ -316,6 +317,9 @@
       ]);
       const base_triangles_count = 6;
       const subdiv_1_triangles_count = 32;
+      const facet_normals = new Float32Array(
+        triangle_indices.length * vertices_object_size
+      );
 
       // the above should programmatically generate the below
       // prettier-ignore
@@ -567,20 +571,14 @@
        * 22 | 0.40740740299224854, 0.40740740299224854, 0.18518519401550293, 0
        */
 
-      const facetNormalsModule = device.createShaderModule({
+      const facet_normalsModule = device.createShaderModule({
         label: "compute facet normals module",
         code: /* wgsl */ `
               /* output */
               @group(0) @binding(0) var<storage, read_write> vertex_normals: array<vec3f>;
               /* input */
               @group(0) @binding(1) var<storage, read> vertices: array<vec3f>;
-              @group(0) @binding(2) var<storage, read> base_triangle_indices: array<vec3u>;
-              @group(0) @binding(3) var<storage, read> subdiv_1_triangle_indices: array<vec3u>;
-
-              /** What I actually want to do here is concatenate the two sets of indices,
-               * because I'm doing the same computation on both of them.
-               * This requires I know the length of both index vectors.
-               */
+              @group(0) @binding(2) var<storage, read> triangle_indices: array<vec3u>;
 
                /** Algorithm:
                 * For tri in all triangles:
@@ -591,27 +589,31 @@
                 *     /* Can't do this! No f32 atomics */
                 * For vertex in all vertices:
                 *   Normalize vertex_normals[vertex]
+                *
+                * OK, so we can't do this approach w/o f32 atomics
+                * So we will instead convert this scatter to gather
+                * This is wasteful; every vertex will walk the entire
+                *   index array looking for matches.
+                *
+                * (1) For tri in all triangles:
+                *   Fetch all 3 vertices of tri
+                *   Compute normalize(cross(v1-v0, v2-v0))
+                *   Store that vector as a facet normal
+                * (2) For vertex in all vertices:
+                *   normal[vertex] = (0,0,0)
+                *   For tri in all triangles:
+                *     // note expensive doubly-nested loop!
+                *     if my vertex is in that triangle:
+                *       normal[vertex] += facet_normal[tri]
+                *   normalize(normal[vertex])
                 */
-              @compute @workgroup_size(1) fn facetNormalsKernel(
+              @compute @workgroup_size(1) fn facet_normalsKernel(
                 @builtin(global_invocation_id) id: vec3u) {
                   var i = id.x;
-                  /* TODO: exit if my index is larger than the size of the input */
-                  let base_triangles_count = 6u; // TODO: pass this into the kernel
-                  let subdiv_1_triangles_count = 32u;
-                  var my_triangles_vertices: vec3u;
-                  if (i < base_triangles_count) {
-                    my_triangles_vertices = base_triangle_indices[i];
-                  } else if (i < (base_triangles_count + subdiv_1_triangles_count)) {
-                    my_triangles_vertices = subdiv_1_triangle_indices[i - base_triangles_count];
-                  } else {
-                    return;
-                  }
-                  // my_triangles_vertices is a vec3 of indices into vertices
                   // Q: Can I make this a vector of points?
-
-                  var v0: vec3f = vertices[my_triangles_vertices[0]];
-                  var v1: vec3f = vertices[my_triangles_vertices[1]];
-                  var v2: vec3f = vertices[my_triangles_vertices[2]];
+                  var v0: vec3f = vertices[triangle_indices[i][0]];
+                  var v1: vec3f = vertices[triangle_indices[i][1]];
+                  var v2: vec3f = vertices[triangle_indices[i][2]];
                   vertex_normals[i] = normalize(cross(v1-v0, v2-v0));
               }
             `,
@@ -685,6 +687,14 @@
         layout: "auto",
         compute: {
           module: vertexPointsModule,
+        },
+      });
+
+      const facet_normals_pipeline = device.createComputePipeline({
+        label: "compute facet normals compute pipeline",
+        layout: "auto",
+        compute: {
+          module: facet_normalsModule,
         },
       });
 
@@ -768,17 +778,6 @@
       });
       device.queue.writeBuffer(base_vertices_buffer, 0, base_vertices);
 
-      const vertex_normals_buffer = device.createBuffer({
-        label: "vertex normals buffer",
-        size: vertex_normals.byteLength,
-        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-      });
-      /** Q: This is all zeroes, is there an easier way to do this than
-       * copy a bunch of zeroes? (It does have to be initialized given
-       * how I am using it.)
-       */
-      device.queue.writeBuffer(vertex_normals_buffer, 0, vertex_normals);
-
       const base_vertex_offset_buffer = device.createBuffer({
         label: "vertex offset",
         size: base_vertex_offset.byteLength,
@@ -835,10 +834,35 @@
       });
       device.queue.writeBuffer(vertices_buffer, 0, vertices);
 
-      /** and the mappable output buffer (I believe that "mappable" is the only way to read from GPU->CPU) */
-      const mappable_result_buffer = device.createBuffer({
-        label: "mappable result buffer",
+      const facet_normals_buffer = device.createBuffer({
+        label: "facet normals buffer",
+        size: facet_normals.byteLength,
+        usage:
+          GPUBufferUsage.STORAGE |
+          GPUBufferUsage.COPY_DST |
+          GPUBufferUsage.COPY_SRC,
+      });
+      device.queue.writeBuffer(facet_normals_buffer, 0, facet_normals);
+
+      const vertex_normals_buffer = device.createBuffer({
+        label: "vertex normals buffer",
+        size: vertex_normals.byteLength,
+        usage:
+          GPUBufferUsage.STORAGE |
+          GPUBufferUsage.COPY_DST |
+          GPUBufferUsage.COPY_SRC,
+      });
+      device.queue.writeBuffer(vertex_normals_buffer, 0, vertex_normals);
+
+      /** and the mappable output buffers (I believe that "mappable" is the only way to read from GPU->CPU) */
+      const mappable_vertices_result_buffer = device.createBuffer({
+        label: "mappable vertices result buffer",
         size: vertices.byteLength,
+        usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+      });
+      const mappable_facet_normals_result_buffer = device.createBuffer({
+        label: "mappable facet normals result buffer",
+        size: facet_normals.byteLength,
         usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
       });
 
@@ -881,6 +905,16 @@
           { binding: 2, resource: { buffer: base_vertex_offset_buffer } },
           { binding: 3, resource: { buffer: base_vertex_valence_buffer } },
           { binding: 4, resource: { buffer: base_vertex_index_buffer } },
+        ],
+      });
+
+      const facet_normals_bindGroup = device.createBindGroup({
+        label: "bindGroup for computing facet normals",
+        layout: facet_normals_pipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: vertex_normals_buffer } },
+          { binding: 1, resource: { buffer: vertices_buffer } },
+          { binding: 2, resource: { buffer: triangle_indices_buffer } },
         ],
       });
 
@@ -965,14 +999,31 @@
         vertex_pass.dispatchWorkgroups(base_vertex_count);
         vertex_pass.end();
 
+        const facet_normals_pass = encoder.beginComputePass({
+          label: "facet normals compute pass",
+        });
+        facet_normals_pass.setPipeline(facet_normals_pipeline);
+        facet_normals_pass.setBindGroup(0, facet_normals_bindGroup);
+        facet_normals_pass.dispatchWorkgroups(
+          base_triangles_count + subdiv_1_triangles_count
+        );
+        facet_normals_pass.end();
+
         // Encode a command to copy the results to a mappable buffer.
         // this is (from, to)
         encoder.copyBufferToBuffer(
           vertices_buffer,
           0,
-          mappable_result_buffer,
+          mappable_vertices_result_buffer,
           0,
-          mappable_result_buffer.size
+          mappable_vertices_result_buffer.size
+        );
+        encoder.copyBufferToBuffer(
+          facet_normals_buffer,
+          0,
+          mappable_facet_normals_result_buffer,
+          0,
+          mappable_facet_normals_result_buffer.size
         );
 
         const render_pass = encoder.beginRenderPass({
@@ -1027,14 +1078,19 @@
         device.queue.submit([commandBuffer]);
 
         // Read the results
-        await mappable_result_buffer.mapAsync(GPUMapMode.READ);
-        const result = new Float32Array(
-          mappable_result_buffer.getMappedRange().slice()
+        await mappable_vertices_result_buffer.mapAsync(GPUMapMode.READ);
+        const vertices_result = new Float32Array(
+          mappable_vertices_result_buffer.getMappedRange().slice()
         );
-        mappable_result_buffer.unmap();
+        mappable_vertices_result_buffer.unmap();
+        await mappable_facet_normals_result_buffer.mapAsync(GPUMapMode.READ);
+        const facet_normals_result = new Float32Array(
+          mappable_vertices_result_buffer.getMappedRange().slice()
+        );
+        mappable_facet_normals_result_buffer.unmap();
 
-        console.log("base vertex positions", vertices);
-        console.log("final vertex buffer", result);
+        console.log("vertex buffer", vertices_result);
+        console.log("facet normals buffer", facet_normals_result);
         console.log("time", myUniformValues.views.time[0]);
         // increment time
         myUniformValues.views.time[0] =
