@@ -179,7 +179,7 @@
       );
 
       myUniformValues.set({
-        UPDATE_INTERVAL: 200.0, // Update every <- ms
+        UPDATE_INTERVAL: 20000.0, // Update every <- ms
         time: 0.0,
         timestep: 1.0,
       });
@@ -610,12 +610,39 @@
                 */
               @compute @workgroup_size(1) fn facet_normalsKernel(
                 @builtin(global_invocation_id) id: vec3u) {
-                  var i = id.x;
+                  var tri = id.x;
                   // Q: Can I make this a vector of points?
-                  var v0: vec3f = vertices[triangle_indices[i][0]];
-                  var v1: vec3f = vertices[triangle_indices[i][1]];
-                  var v2: vec3f = vertices[triangle_indices[i][2]];
-                  facet_normals[i] = normalize(cross(v1-v0, v2-v0));
+                  var v0: vec3f = vertices[triangle_indices[tri][0]];
+                  var v1: vec3f = vertices[triangle_indices[tri][1]];
+                  var v2: vec3f = vertices[triangle_indices[tri][2]];
+                  facet_normals[tri] = normalize(cross(v1-v0, v2-v0));
+              }
+            `,
+      });
+
+      const vertex_normalsModule = device.createShaderModule({
+        label: "compute vertex normals module",
+        code: /* wgsl */ `
+              /* output */
+              @group(0) @binding(0) var<storage, read_write> vertex_normals: array<vec3f>;
+              /* input */
+              @group(0) @binding(1) var<storage, read> facet_normals: array<vec3f>;
+              @group(0) @binding(2) var<storage, read> triangle_indices: array<vec3u>;
+
+              /* see facet_normalsModule for algorithm */
+
+              @compute @workgroup_size(1) fn vertex_normalsKernel(
+                @builtin(global_invocation_id) id: vec3u) {
+                  var vtx = id.x;
+                  vertex_normals[vtx] = vec3f(0, 0, 0);
+                  for (var tri: u32 = 0; tri < arrayLength(&triangle_indices); tri++) {
+                    for (var tri_vtx: u32 = 0; tri_vtx < 3; tri_vtx++) { /* unroll */
+                      if (vtx == triangle_indices[tri][tri_vtx]) {
+                        vertex_normals[vtx] += facet_normals[tri];
+                      }
+                    }
+                  }
+                  vertex_normals[vtx] = normalize(vertex_normals[vtx]);
               }
             `,
       });
@@ -692,10 +719,18 @@
       });
 
       const facet_normals_pipeline = device.createComputePipeline({
-        label: "compute facet normals compute pipeline",
+        label: "facet normals compute pipeline",
         layout: "auto",
         compute: {
           module: facet_normalsModule,
+        },
+      });
+
+      const vertex_normals_pipeline = device.createComputePipeline({
+        label: "vertex normals compute pipeline",
+        layout: "auto",
+        compute: {
+          module: vertex_normalsModule,
         },
       });
 
@@ -869,6 +904,11 @@
         size: facet_normals.byteLength,
         usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
       });
+      const mappable_vertex_normals_result_buffer = device.createBuffer({
+        label: "mappable vertex normals result buffer",
+        size: vertex_normals.byteLength,
+        usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+      });
 
       /** Set up bindGroups per compute kernel to tell the shader which buffers to use */
       const perturb_bindGroup = device.createBindGroup({
@@ -918,6 +958,16 @@
         entries: [
           { binding: 0, resource: { buffer: facet_normals_buffer } },
           { binding: 1, resource: { buffer: vertices_buffer } },
+          { binding: 2, resource: { buffer: triangle_indices_buffer } },
+        ],
+      });
+
+      const vertex_normals_bindGroup = device.createBindGroup({
+        label: "bindGroup for computing vertex normals",
+        layout: vertex_normals_pipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: vertex_normals_buffer } },
+          { binding: 1, resource: { buffer: facet_normals_buffer } },
           { binding: 2, resource: { buffer: triangle_indices_buffer } },
         ],
       });
@@ -1013,6 +1063,14 @@
         );
         facet_normals_pass.end();
 
+        const vertex_normals_pass = encoder.beginComputePass({
+          label: "vertex normals compute pass",
+        });
+        vertex_normals_pass.setPipeline(vertex_normals_pipeline);
+        vertex_normals_pass.setBindGroup(0, vertex_normals_bindGroup);
+        vertex_normals_pass.dispatchWorkgroups(vertices_size);
+        vertex_normals_pass.end();
+
         // Encode a command to copy the results to a mappable buffer.
         // this is (from, to)
         encoder.copyBufferToBuffer(
@@ -1028,6 +1086,13 @@
           mappable_facet_normals_result_buffer,
           0,
           mappable_facet_normals_result_buffer.size
+        );
+        encoder.copyBufferToBuffer(
+          vertex_normals_buffer,
+          0,
+          mappable_vertex_normals_result_buffer,
+          0,
+          mappable_vertex_normals_result_buffer.size
         );
 
         const render_pass = encoder.beginRenderPass({
@@ -1092,9 +1157,15 @@
           mappable_facet_normals_result_buffer.getMappedRange().slice()
         );
         mappable_facet_normals_result_buffer.unmap();
+        await mappable_vertex_normals_result_buffer.mapAsync(GPUMapMode.READ);
+        const vertex_normals_result = new Float32Array(
+          mappable_vertex_normals_result_buffer.getMappedRange().slice()
+        );
+        mappable_vertex_normals_result_buffer.unmap();
 
         console.log("vertex buffer", vertices_result);
         console.log("facet normals buffer", facet_normals_result);
+        console.log("vertex normals buffer", vertex_normals_result);
         console.log("time", myUniformValues.views.time[0]);
         // increment time
         myUniformValues.views.time[0] =
