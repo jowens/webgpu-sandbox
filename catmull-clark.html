@@ -634,7 +634,7 @@
               @group(0) @binding(1) var<storage, read> facet_normals: array<vec3f>;
               @group(0) @binding(2) var<storage, read> triangle_indices: array<u32>;
 
-              /* see facet_normalsModule for algorithm */
+              /* see facet_normals_module for algorithm */
 
               @compute @workgroup_size(${WORKGROUP_SIZE}) fn vertex_normals_kernel(
                 @builtin(global_invocation_id) id: vec3u) {
@@ -688,8 +688,9 @@
                   0.75 /* partial transparency might aid debugging */);
                 /* let's try "lighting", in model space */
                 /* this is just a dot product with the infinite white light at (1,1,1) */
-                /* it's just choosing the normal vector as the color */
-                output.color = vec4f(norm.x, norm.y, norm.z, 0.75);
+                /* it's just choosing the normal vector as the color, scaled to [0,1] */
+                // output.color = vec4f(norm.x, norm.y, norm.z, 0.75);
+                output.color = vec4f(0.5*(norm.x+1), 0.5*(norm.y+1), 0.5*(norm.z+1), 0.75);
                 return output;
               }
 
