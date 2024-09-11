@@ -175,8 +175,8 @@
       const uni = makeStructuredView(uniforms_defs.uniforms.myUniforms);
 
       uni.set({
-        ROTATE_CAMERA_SPEED: 0.01, // how quickly camera rotates
-        TOGGLE_DURATION: 200.0, // number of timesteps between model toggle
+        ROTATE_CAMERA_SPEED: 0.003, // how quickly camera rotates
+        TOGGLE_DURATION: 400.0, // number of timesteps between model toggle
         WIGGLE_MAGNITUDE: 0.025, // how much vertices are perturbed
         WIGGLE_SPEED: 0.1, // how quickly perturbations occur
         time: 0.0,
@@ -1009,14 +1009,17 @@
 
       function get_transformation_matrix() {
         const view_matrix = mat4.identity();
-        mat4.translate(view_matrix, vec3.fromValues(0, 0, -3), view_matrix);
         var now = uni.views.time[0] * uni.views.ROTATE_CAMERA_SPEED[0];
-        mat4.rotate(
-          view_matrix,
-          vec3.fromValues(Math.sin(now), Math.cos(now), 0),
-          1,
-          view_matrix
-        );
+        mat4.translate(view_matrix, vec3.fromValues(0, 0, -3), view_matrix);
+        mat4.rotateZ(view_matrix, now, view_matrix);
+        mat4.rotateY(view_matrix, now, view_matrix);
+        mat4.rotateX(view_matrix, now, view_matrix);
+        //mat4.rotate(
+        // view_matrix,
+        //vec3.fromValues(Math.sin(now), Math.cos(now), 0),
+        //1,
+        //view_matrix
+        //);
         mat4.multiply(
           projection_matrix,
           view_matrix,
