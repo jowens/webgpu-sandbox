@@ -179,7 +179,7 @@
       );
 
       myUniformValues.set({
-        UPDATE_INTERVAL: 20000.0, // Update every <- ms
+        UPDATE_INTERVAL: 200.0, // Update every <- ms
         time: 0.0,
         timestep: 1.0,
       });
@@ -653,6 +653,7 @@
         code: /* wgsl */ `
               struct VertexInput {
                 @location(0) pos: vec4f,
+                @location(1) vertex_normals: vec3f,
                 @builtin(vertex_index) vertex_index: u32,
               };
 
@@ -669,6 +670,7 @@
 
               @vertex
               fn vertexMain(@location(0) pos: vec4f,
+                            @location(1) norm: vec3f,
                             @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
                 var output: VertexOutput;
                 output.pos = uniforms.modelViewProjectionMatrix * pos;
@@ -677,6 +679,10 @@
                   0.35 + select(0, 0.6, (vertex_index & 2) != 0) - select(0, 0.3, (vertex_index & 16) != 0),
                   0.35 + select(0, 0.6, (vertex_index & 4) != 0) - select(0, 0.3, (vertex_index & 32) != 0),
                   0.75 /* partial transparency might aid debugging */);
+                /* let's try "lighting", in model space */
+                /* this is just a dot product with the infinite white light at (1,1,1) */
+                /* it's just choosing the normal vector as the color */
+                output.color = vec4f(norm.x, norm.y, norm.z, 0.75);
                 return output;
               }
 
@@ -754,6 +760,11 @@
               attributes: [
                 {
                   shaderLocation: 0, // position
+                  format: "float32x3",
+                  offset: 0,
+                },
+                {
+                  shaderLocation: 1, // normals
                   format: "float32x3",
                   offset: 0,
                 },
