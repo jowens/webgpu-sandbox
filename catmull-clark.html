@@ -7,7 +7,7 @@
   </head>
 
   <body>
-    <canvas width="512" height="512"></canvas>
+    <canvas width="768" height="768"></canvas>
     <p>What this demo shows:</p>
     <ul>
       <li>
@@ -163,7 +163,11 @@
       //   uniform structures for each kernel?
       const uniforms_code = /* wgsl */ `
         struct MyUniforms {
-          UPDATE_INTERVAL: f32,
+          REFRESH_INTERVAL: f32,
+          ROTATE_CAMERA_SPEED: f32,
+          TOGGLE_DURATION: f32,
+          WIGGLE_MAGNITUDE: f32,
+          WIGGLE_SPEED: f32,
           time: f32,
           timestep: f32,
         };
@@ -179,7 +183,11 @@
       );
 
       myUniformValues.set({
-        UPDATE_INTERVAL: 200.0, // Update every <- ms
+        REFRESH_INTERVAL: 20.0, // Update every <- ms
+        ROTATE_CAMERA_SPEED: 0.01,
+        TOGGLE_DURATION: 200.0, // number of frames between model toggle
+        WIGGLE_MAGNITUDE: 0.025,
+        WIGGLE_SPEED: 0.1,
         time: 0.0,
         timestep: 1.0,
       });
@@ -369,8 +377,8 @@
               @compute @workgroup_size(1) fn perturbInputVerticesKernel(
                        @builtin(global_invocation_id) id: vec3u) {
                 let i = id.x;
-                let t = myUniforms.time;
-                let stepsize = 0.1;
+                let t = myUniforms.time * myUniforms.WIGGLE_SPEED;
+                let stepsize = myUniforms.WIGGLE_MAGNITUDE;
                 let angle_start = f32(i);
                 /* philosophy of animating base vertices:
                  *
@@ -1002,7 +1010,9 @@
       function getTransformationMatrix() {
         const viewMatrix = mat4.identity();
         mat4.translate(viewMatrix, vec3.fromValues(0, 0, -3), viewMatrix);
-        var now = myUniformValues.views.time[0] / 100;
+        var now =
+          myUniformValues.views.time[0] *
+          myUniformValues.views.ROTATE_CAMERA_SPEED[0];
         mat4.rotate(
           viewMatrix,
           vec3.fromValues(Math.sin(now), Math.cos(now), 0),
@@ -1129,13 +1139,12 @@
         render_pass.setPipeline(render_pipeline);
         render_pass.setBindGroup(0, render_bindGroup);
         render_pass.setVertexBuffer(0, vertices_buffer);
-        const mesh_duration = 10;
         var start_idx = -1;
         var end_idx = -1;
         var now = myUniformValues.views.time[0];
 
         render_pass.setIndexBuffer(triangle_indices_buffer, "uint32");
-        switch ((now / mesh_duration) & 1) {
+        switch ((now / myUniformValues.views.TOGGLE_DURATION) & 1) {
           case 0 /* draws tris [0, base_triangles_count) */:
             start_idx = 0;
             end_idx = base_triangles_count * 3;
@@ -1192,7 +1201,7 @@
       renderLoop(); // render first frame right away
 
       // Schedule renderLoop() to run repeatedly
-      setInterval(renderLoop, myUniformValues.views.UPDATE_INTERVAL);
+      setInterval(renderLoop, myUniformValues.views.REFRESH_INTERVAL);
 
       function fail(msg) {
         // eslint-disable-next-line no-alert
