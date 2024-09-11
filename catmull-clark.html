@@ -368,21 +368,23 @@
               @compute @workgroup_size(${WORKGROUP_SIZE}) fn perturbInputVerticesKernel(
                        @builtin(global_invocation_id) id: vec3u) {
                 let i = id.x;
-                let t = myUniforms.time * myUniforms.WIGGLE_SPEED;
-                let stepsize = myUniforms.WIGGLE_MAGNITUDE;
-                let angle_start = f32(i);
-                /* philosophy of animating base vertices:
-                 *
-                 * - vertex should not move in aggregate over time
-                 * - each vertex should move ~differently
-                 *
-                 * design: each vertex moves in a "random" direction by a fixed amt
-                 *         starting direction differs per vertex ("angle_start")
-                 *         movements cancel each other out over time
-                 */
-                vertices[i] += vec3(stepsize * cos(angle_start + t),
-                                    stepsize * sin(angle_start + t),
-                                    stepsize * 0.5 * sin(angle_start + t));
+                if (i < arrayLength(&vertices)) {
+                  let t = myUniforms.time * myUniforms.WIGGLE_SPEED;
+                  let stepsize = myUniforms.WIGGLE_MAGNITUDE;
+                  let angle_start = f32(i);
+                  /* philosophy of animating base vertices:
+                   *
+                   * - vertex should not move in aggregate over time
+                   * - each vertex should move ~differently
+                   *
+                   * design: each vertex moves in a "random" direction by a fixed amt
+                   *         starting direction differs per vertex ("angle_start")
+                   *         movements cancel each other out over time
+                   */
+                  vertices[i] += vec3(stepsize * cos(angle_start + t),
+                                      stepsize * sin(angle_start + t),
+                                      stepsize * 0.5 * sin(angle_start + t));
+                }
               }
             `,
       });
@@ -422,15 +424,17 @@
               @compute @workgroup_size(${WORKGROUP_SIZE}) fn facePointsKernel(
                 @builtin(global_invocation_id) id: vec3u) {
                 let i = id.x;
-                /* TODO: exit if my index is larger than the size of the input */
+                if (i < arrayLength(&base_face_offset)) {
+                  /* TODO: exit if my index is larger than the size of the input */
 
-                let out = i + ${vertices_write_ptr};
-                vertices[out] = vec3f(0,0,0);
-                for (var j: u32 = base_face_offset[i]; j < base_face_offset[i] + base_face_valence[i]; j++) {
-                  let face_vertex = base_faces[j];
-                  vertices[out] += vertices[face_vertex];
+                  let out = i + ${vertices_write_ptr};
+                  vertices[out] = vec3f(0,0,0);
+                  for (var j: u32 = base_face_offset[i]; j < base_face_offset[i] + base_face_valence[i]; j++) {
+                    let face_vertex = base_faces[j];
+                    vertices[out] += vertices[face_vertex];
+                  }
+                  vertices[out] /= f32(base_face_valence[i]);
                 }
-                vertices[out] /= f32(base_face_valence[i]);
                 // TODO: decide on vec3f or vec4f and set w if so
               }
             `,
@@ -545,19 +549,19 @@
               @compute @workgroup_size(${WORKGROUP_SIZE}) fn vertex_points_kernel(
                 @builtin(global_invocation_id) id: vec3u) {
                   let i = id.x;
-                  /* TODO: exit if my index is larger than the size of the input */
-
-                  var out = i + ${vertices_write_ptr};
-                  var valence = base_vertex_valence[i];
-                  vertices[out] = vec3f(0,0,0);
-                  for (var j: u32 = base_vertex_offset[i]; j < base_vertex_offset[i] + 2 * base_vertex_valence[i]; j++) {
-                    var base_vertex = base_vertices[j];
-                    vertices[out] += vertices[base_vertex];
-                  }
-                  vertices[out] /= f32(valence);
-                  vertices[out] += f32(valence - 2) * vertices[base_vertex_index[i]];
-                  vertices[out] /= f32(valence);
-                  // TODO: decide on vec3f or vec4f and set w if so
+                  if (i < arrayLength(&base_vertex_offset)) {
+                    var out = i + ${vertices_write_ptr};
+                    var valence = base_vertex_valence[i];
+                    vertices[out] = vec3f(0,0,0);
+                    for (var j: u32 = base_vertex_offset[i]; j < base_vertex_offset[i] + 2 * base_vertex_valence[i]; j++) {
+                      var base_vertex = base_vertices[j];
+                      vertices[out] += vertices[base_vertex];
+                    }
+                    vertices[out] /= f32(valence);
+                    vertices[out] += f32(valence - 2) * vertices[base_vertex_index[i]];
+                    vertices[out] /= f32(valence);
+                    // TODO: decide on vec3f or vec4f and set w if so
+                }
               }
             `,
       });
@@ -610,12 +614,14 @@
               @compute @workgroup_size(${WORKGROUP_SIZE}) fn facet_normals_kernel(
                 @builtin(global_invocation_id) id: vec3u) {
                   var tri = id.x;
-                  /* note triangle_indices is u32 not vec3, do math accordingly */
-                  var v0: vec3f = vertices[triangle_indices[tri * 3]];
-                  var v1: vec3f = vertices[triangle_indices[tri * 3 + 1]];
-                  var v2: vec3f = vertices[triangle_indices[tri * 3 + 2]];
-                  facet_normals[tri] = normalize(cross(v1-v0, v2-v0));
-              }
+                  if (tri < arrayLength(&facet_normals)) {
+                    /* note triangle_indices is u32 not vec3, do math accordingly */
+                    var v0: vec3f = vertices[triangle_indices[tri * 3]];
+                    var v1: vec3f = vertices[triangle_indices[tri * 3 + 1]];
+                    var v2: vec3f = vertices[triangle_indices[tri * 3 + 2]];
+                    facet_normals[tri] = normalize(cross(v1-v0, v2-v0));
+                  }
+                }
             `,
       });
 
@@ -633,16 +639,18 @@
               @compute @workgroup_size(${WORKGROUP_SIZE}) fn vertex_normals_kernel(
                 @builtin(global_invocation_id) id: vec3u) {
                   var vtx = id.x;
-                  vertex_normals[vtx] = vec3f(0, 0, 0);
-                  /* note triangle_indices is u32 not vec3, do math accordingly */
-                  for (var tri: u32 = 0; tri < arrayLength(&triangle_indices) / 3; tri++) {
-                    for (var tri_vtx: u32 = 0; tri_vtx < 3; tri_vtx++) { /* unroll */
-                      if (vtx == triangle_indices[tri * 3 + tri_vtx]) {
-                        vertex_normals[vtx] += facet_normals[tri];
+                  if (vtx < arrayLength(&vertex_normals)) {
+                    vertex_normals[vtx] = vec3f(0, 0, 0);
+                    /* note triangle_indices is u32 not vec3, do math accordingly */
+                    for (var tri: u32 = 0; tri < arrayLength(&triangle_indices) / 3; tri++) {
+                      for (var tri_vtx: u32 = 0; tri_vtx < 3; tri_vtx++) { /* unroll */
+                        if (vtx == triangle_indices[tri * 3 + tri_vtx]) {
+                          vertex_normals[vtx] += facet_normals[tri];
+                        }
                       }
                     }
+                    vertex_normals[vtx] = normalize(vertex_normals[vtx]);
                   }
-                  vertex_normals[vtx] = normalize(vertex_normals[vtx]);
               }
             `,
       });
