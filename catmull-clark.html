@@ -183,6 +183,8 @@
         timestep: 1.0,
       });
 
+      const WORKGROUP_SIZE = 64;
+
       const uniforms_buffer = device.createBuffer({
         size: uni.arrayBuffer.byteLength,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -363,7 +365,7 @@
               ${uniforms_code} /* this specifies @group(0) @binding(0) */
               /* input + output */
               @group(0) @binding(1) var<storage, read_write> vertices: array<vec3f>;
-              @compute @workgroup_size(1) fn perturbInputVerticesKernel(
+              @compute @workgroup_size(${WORKGROUP_SIZE}) fn perturbInputVerticesKernel(
                        @builtin(global_invocation_id) id: vec3u) {
                 let i = id.x;
                 let t = myUniforms.time * myUniforms.WIGGLE_SPEED;
@@ -417,7 +419,7 @@
                 *                       "offset into the index buffer" is base_face_offset
                 */
 
-              @compute @workgroup_size(1) fn facePointsKernel(
+              @compute @workgroup_size(${WORKGROUP_SIZE}) fn facePointsKernel(
                 @builtin(global_invocation_id) id: vec3u) {
                 let i = id.x;
                 /* TODO: exit if my index is larger than the size of the input */
@@ -467,19 +469,19 @@
                * implementation above: "a buffer for the indices of these entities" is base_edges
                */
 
-              @compute @workgroup_size(1) fn edge_points_kernel(
+              @compute @workgroup_size(${WORKGROUP_SIZE}) fn edge_points_kernel(
                 @builtin(global_invocation_id) id: vec3u) {
                   let i = id.x;
-                  /* TODO: exit if my index is larger than the size of the input */
-
-                  let out = i + ${vertices_write_ptr};
-                  let edge_id = i;
-                  vertices[out] = vec3f(0,0,0);
-                  for (var j: u32 = 0; j < 4; j++) {
-                    vertices[out] += vertices[base_edges[edge_id][j]];
+                  if (i < arrayLength(&base_edges)) {
+                    let out = i + ${vertices_write_ptr};
+                    let edge_id = i;
+                    vertices[out] = vec3f(0,0,0);
+                    for (var j: u32 = 0; j < 4; j++) {
+                      vertices[out] += vertices[base_edges[edge_id][j]];
+                    }
+                    vertices[out] *= 0.25;
                   }
-                  vertices[out] *= 0.25;
-              }
+                }
             `,
       });
 
@@ -540,7 +542,7 @@
                * implementation above: "a buffer for the indices of these entities" is base_vertices
                */
 
-              @compute @workgroup_size(1) fn vertex_points_kernel(
+              @compute @workgroup_size(${WORKGROUP_SIZE}) fn vertex_points_kernel(
                 @builtin(global_invocation_id) id: vec3u) {
                   let i = id.x;
                   /* TODO: exit if my index is larger than the size of the input */
@@ -605,7 +607,7 @@
                 *       normal[vertex] += facet_normal[tri]
                 *   normalize(normal[vertex])
                 */
-              @compute @workgroup_size(1) fn facet_normals_kernel(
+              @compute @workgroup_size(${WORKGROUP_SIZE}) fn facet_normals_kernel(
                 @builtin(global_invocation_id) id: vec3u) {
                   var tri = id.x;
                   /* note triangle_indices is u32 not vec3, do math accordingly */
@@ -628,7 +630,7 @@
 
               /* see facet_normalsModule for algorithm */
 
-              @compute @workgroup_size(1) fn vertex_normals_kernel(
+              @compute @workgroup_size(${WORKGROUP_SIZE}) fn vertex_normals_kernel(
                 @builtin(global_invocation_id) id: vec3u) {
                   var vtx = id.x;
                   vertex_normals[vtx] = vec3f(0, 0, 0);
@@ -1037,7 +1039,9 @@
         });
         perturb_pass.setPipeline(perturb_pipeline);
         perturb_pass.setBindGroup(0, perturb_bind_group);
-        perturb_pass.dispatchWorkgroups(base_vertex_positions.length);
+        perturb_pass.dispatchWorkgroups(
+          Math.ceil(base_vertex_positions.length / WORKGROUP_SIZE)
+        );
         perturb_pass.end();
 
         const face_pass = encoder.beginComputePass({
@@ -1045,7 +1049,9 @@
         });
         face_pass.setPipeline(face_pipeline);
         face_pass.setBindGroup(0, face_bind_group);
-        face_pass.dispatchWorkgroups(base_faces_count);
+        face_pass.dispatchWorkgroups(
+          Math.ceil(base_faces_count / WORKGROUP_SIZE)
+        );
         face_pass.end();
 
         const edge_pass = encoder.beginComputePass({
@@ -1053,7 +1059,9 @@
         });
         edge_pass.setPipeline(edge_pipeline);
         edge_pass.setBindGroup(0, edge_bind_group);
-        edge_pass.dispatchWorkgroups(base_edges_count);
+        edge_pass.dispatchWorkgroups(
+          Math.ceil(base_edges_count / WORKGROUP_SIZE)
+        );
         edge_pass.end();
 
         const vertex_pass = encoder.beginComputePass({
@@ -1061,7 +1069,9 @@
         });
         vertex_pass.setPipeline(vertex_pipeline);
         vertex_pass.setBindGroup(0, vertex_bind_group);
-        vertex_pass.dispatchWorkgroups(base_vertex_count);
+        vertex_pass.dispatchWorkgroups(
+          Math.ceil(base_vertex_count / WORKGROUP_SIZE)
+        );
         vertex_pass.end();
 
         const facet_normals_pass = encoder.beginComputePass({
@@ -1070,7 +1080,9 @@
         facet_normals_pass.setPipeline(facet_normals_pipeline);
         facet_normals_pass.setBindGroup(0, facet_normals_bind_group);
         facet_normals_pass.dispatchWorkgroups(
-          base_triangles_count + subdiv_1_triangles_count
+          Math.ceil(
+            base_triangles_count + subdiv_1_triangles_count / WORKGROUP_SIZE
+          )
         );
         facet_normals_pass.end();
 
@@ -1079,7 +1091,9 @@
         });
         vertex_normals_pass.setPipeline(vertex_normals_pipeline);
         vertex_normals_pass.setBindGroup(0, vertex_normals_bind_group);
-        vertex_normals_pass.dispatchWorkgroups(vertices_size);
+        vertex_normals_pass.dispatchWorkgroups(
+          Math.ceil(vertices_size / WORKGROUP_SIZE)
+        );
         vertex_normals_pass.end();
 
         // Encode a command to copy the results to a mappable buffer.
