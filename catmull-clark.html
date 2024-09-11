@@ -318,7 +318,7 @@
       const base_triangles_count = 6;
       const subdiv_1_triangles_count = 32;
       const facet_normals = new Float32Array(
-        triangle_indices.length * vertices_object_size
+        triangle_indices.length * normals_object_size
       );
 
       // the above should programmatically generate the below
@@ -575,7 +575,7 @@
         label: "compute facet normals module",
         code: /* wgsl */ `
               /* output */
-              @group(0) @binding(0) var<storage, read_write> vertex_normals: array<vec3f>;
+              @group(0) @binding(0) var<storage, read_write> facet_normals: array<vec3f>;
               /* input */
               @group(0) @binding(1) var<storage, read> vertices: array<vec3f>;
               @group(0) @binding(2) var<storage, read> triangle_indices: array<vec3u>;
@@ -594,6 +594,7 @@
                 * So we will instead convert this scatter to gather
                 * This is wasteful; every vertex will walk the entire
                 *   index array looking for matches.
+                * Could alternately build a mapping of {vtx->facet}
                 *
                 * (1) For tri in all triangles:
                 *   Fetch all 3 vertices of tri
@@ -614,7 +615,7 @@
                   var v0: vec3f = vertices[triangle_indices[i][0]];
                   var v1: vec3f = vertices[triangle_indices[i][1]];
                   var v2: vec3f = vertices[triangle_indices[i][2]];
-                  vertex_normals[i] = normalize(cross(v1-v0, v2-v0));
+                  facet_normals[i] = normalize(cross(v1-v0, v2-v0));
               }
             `,
       });
@@ -915,7 +916,7 @@
         label: "bindGroup for computing facet normals",
         layout: facet_normals_pipeline.getBindGroupLayout(0),
         entries: [
-          { binding: 0, resource: { buffer: vertex_normals_buffer } },
+          { binding: 0, resource: { buffer: facet_normals_buffer } },
           { binding: 1, resource: { buffer: vertices_buffer } },
           { binding: 2, resource: { buffer: triangle_indices_buffer } },
         ],
