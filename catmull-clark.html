@@ -334,7 +334,8 @@
       // TODO: compute that scan in a compute shader
       const base_face_offset = new Uint32Array([0, 3, 6, 9, 12]); /* FIG4 */
       const base_faces_count = base_face_valence.length;
-      var vertices_write_ptr = base_vertex_positions.length;
+      var vertices_write_ptr =
+        base_vertex_positions.length / vertices_object_size;
 
       // prettier-ignore
       const base_edges = new Uint32Array([ /* FIG4 */
