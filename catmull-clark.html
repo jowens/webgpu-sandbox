@@ -188,8 +188,6 @@
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
       });
 
-      device.queue.writeBuffer(uniforms_buffer, 0, uni.arrayBuffer);
-
       const canvas = document.querySelector("canvas");
       const context = canvas.getContext("webgpu");
       const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
@@ -1017,9 +1015,7 @@
       }
 
       async function frame() {
-        /* Q: Is this the right way to set up a render loop,
-         *, e.g., the right things are inside it and outside it? */
-        /* Q: is "async" OK? It has an async fn within it. */
+        device.queue.writeBuffer(uniforms_buffer, 0, uni.arrayBuffer);
 
         const transformation_matrix = get_transformation_matrix();
         device.queue.writeBuffer(
@@ -1183,8 +1179,6 @@
         console.log("time", uni.views.time[0]);
         // increment time
         uni.views.time[0] = uni.views.time[0] + uni.views.timestep[0];
-        // TODO: I should really only writeBuffer in one place in the code
-        device.queue.writeBuffer(uniforms_buffer, 0, uni.arrayBuffer);
         requestAnimationFrame(frame);
       }
       requestAnimationFrame(frame);
