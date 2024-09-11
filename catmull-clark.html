@@ -63,9 +63,7 @@
       </li>
       <li>Rendered as indexed triangles</li>
       <li>Toggle is implemented simply by binding a different index buffer</li>
-      <li>
-        Vertex colors are procedurally generated as a function of vertex ID
-      </li>
+      <li>Vertex colors are simply the vertex normal</li>
       <li>
         Camera is implemented in the vertex shader; it rotates around the
         pyramid. Camera code mostly swiped from
@@ -111,10 +109,7 @@
     </ul>
     <p>What could make this visually better:</p>
     <ul>
-      <li>
-        Normal vectors per face, and lighting, rather than fixed vertex colors
-        (that, moreover, aren't consistent across subdivision levels)
-      </li>
+      <li>Actual lighting (we do have normal vectors per vertex)</li>
       <li>
         <a href="https://webgpu.github.io/webgpu-samples/?sample=wireframe"
           >Wireframe</a
