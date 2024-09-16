@@ -130,6 +130,10 @@
         code
       </li>
     </ul>
+    <script
+      type="text/javascript"
+      src="./webgpufundamentals-timing.js"
+    ></script>
     <script type="module">
       // inspiration: https://webgpufundamentals.org/webgpu/lessons/webgpu-fundamentals.html
 
@@ -145,10 +149,15 @@
       } from "https://greggman.github.io/webgpu-utils/dist/1.x/webgpu-utils.module.js";
 
       const adapter = await navigator.gpu?.requestAdapter();
-      const device = await adapter?.requestDevice();
+      const canTimestamp = adapter.features.has("timestamp-query");
+      const device = await adapter?.requestDevice({
+        requiredFeatures: [...(canTimestamp ? ["timestamp-query"] : [])], // ...: conditional add
+      });
+      // const device = await adapter?.requestDevice();
       if (!device) {
         fail("Fatal error: Device does not support WebGPU.");
       }
+      const timing_helper = new TimingHelper(device);
 
       // using webgpu-utils to have one struct for uniforms across all kernels
       // Seems kind of weird that struct is a WGSL/GPU struct, not a JS/CPU struct,
@@ -1086,7 +1095,7 @@
         );
         vertex_pass.end();
 
-        const facet_normals_pass = encoder.beginComputePass({
+        const facet_normals_pass = timing_helper.beginComputePass(encoder, {
           label: "facet normals compute pass",
         });
         facet_normals_pass.setPipeline(facet_normals_pipeline);
@@ -1199,9 +1208,13 @@
         );
         mappable_vertex_normals_result_buffer.unmap();
 
-        console.log("vertex buffer", vertices_result);
-        console.log("facet normals buffer", facet_normals_result);
-        console.log("vertex normals buffer", vertex_normals_result);
+        timing_helper.getResult().then((res) => {
+          console.log("timing helper result", res);
+        });
+
+        //// console.log("vertex buffer", vertices_result);
+        //// console.log("facet normals buffer", facet_normals_result);
+        //// console.log("vertex normals buffer", vertex_normals_result);
         console.log("time", uni.views.time[0]);
         // increment time
         uni.views.time[0] = uni.views.time[0] + uni.views.timestep[0];
