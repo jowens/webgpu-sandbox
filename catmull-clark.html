@@ -251,7 +251,7 @@
         1, -1, 0, 1,  // vertex 3
         1, 1, 0, 1,   // vertex 4
       ]); // use this ONLY to populate (part of) the vertex buffer
-      for (var i = 0; i < base_vertex_positions.length; i++) {
+      for (let i = 0; i < base_vertex_positions.length; i++) {
         vertices[i] = base_vertex_positions[i];
       }
       // never use base_vertex_positions again
@@ -336,7 +336,7 @@
       // TODO: compute that scan in a compute shader
       const base_face_offset = new Uint32Array([0, 3, 6, 9, 12]); /* FIG4 */
       const base_faces_count = base_face_valence.length;
-      var vertices_write_ptr =
+      let vertices_write_ptr =
         base_vertex_positions.length / vertices_object_size;
 
       // prettier-ignore
@@ -559,11 +559,11 @@
                 @builtin(global_invocation_id) id: vec3u) {
                   let i = id.x;
                   if (i < arrayLength(&base_vertex_offset)) {
-                    var out = i + ${vertices_write_ptr};
-                    var valence = base_vertex_valence[i];
+                    let out = i + ${vertices_write_ptr};
+                    let valence = base_vertex_valence[i];
                     vertices[out] = vec3f(0,0,0);
                     for (var j: u32 = base_vertex_offset[i]; j < base_vertex_offset[i] + 2 * base_vertex_valence[i]; j++) {
-                      var base_vertex = base_vertices[j];
+                      let base_vertex = base_vertices[j];
                       vertices[out] += vertices[base_vertex];
                     }
                     vertices[out] /= f32(valence);
@@ -622,12 +622,12 @@
                 */
               @compute @workgroup_size(${WORKGROUP_SIZE}) fn facet_normals_kernel(
                 @builtin(global_invocation_id) id: vec3u) {
-                  var tri = id.x;
+                  let tri = id.x;
                   if (tri < arrayLength(&facet_normals)) {
                     /* note triangle_indices is u32 not vec3, do math accordingly */
-                    var v0: vec3f = vertices[triangle_indices[tri * 3]];
-                    var v1: vec3f = vertices[triangle_indices[tri * 3 + 1]];
-                    var v2: vec3f = vertices[triangle_indices[tri * 3 + 2]];
+                    let v0: vec3f = vertices[triangle_indices[tri * 3]];
+                    let v1: vec3f = vertices[triangle_indices[tri * 3 + 1]];
+                    let v2: vec3f = vertices[triangle_indices[tri * 3 + 2]];
                     facet_normals[tri] = normalize(cross(v1-v0, v2-v0));
                   }
                 }
@@ -647,7 +647,7 @@
 
               @compute @workgroup_size(${WORKGROUP_SIZE}) fn vertex_normals_kernel(
                 @builtin(global_invocation_id) id: vec3u) {
-                  var vtx = id.x;
+                  let vtx = id.x;
                   if (vtx < arrayLength(&vertex_normals)) {
                     vertex_normals[vtx] = vec3f(0, 0, 0);
                     /* note triangle_indices is u32 not vec3, do math accordingly */
@@ -1018,7 +1018,7 @@
 
       function get_transformation_matrix() {
         const view_matrix = mat4.identity();
-        var now = uni.views.time[0] * uni.views.ROTATE_CAMERA_SPEED[0];
+        let now = uni.views.time[0] * uni.views.ROTATE_CAMERA_SPEED[0];
         mat4.translate(view_matrix, vec3.fromValues(0, 0, -3), view_matrix);
         mat4.rotateZ(view_matrix, now, view_matrix);
         mat4.rotateY(view_matrix, now, view_matrix);
@@ -1163,9 +1163,9 @@
         render_pass.setPipeline(render_pipeline);
         render_pass.setBindGroup(0, render_bind_group);
         render_pass.setVertexBuffer(0, vertices_buffer);
-        var start_idx = -1;
-        var end_idx = -1;
-        var now = uni.views.time[0];
+        let start_idx = -1;
+        let end_idx = -1;
+        const now = uni.views.time[0];
 
         render_pass.setIndexBuffer(triangle_indices_buffer, "uint32");
         switch ((now / uni.views.TOGGLE_DURATION) & 1) {
