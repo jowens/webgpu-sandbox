@@ -32,18 +32,20 @@
       const WORKGROUP_SIZE = 1; // assumes 1D workgroups for now
       const memsrcSize = 2 ** 20; // (1M elements)
       const itemsPerWorkgroup = memsrcSize / WORKGROUP_SIZE;
-      const dispatchGeometry =
-        itemsPerWorkgroup > adapter.limits.maxComputeWorkgroupsPerDimension
-          ? [
-              adapter.limits.maxComputeWorkgroupsPerDimension,
-              Math.round(
-                // can't do 2^20 / 2^8, sheesh
-                itemsPerWorkgroup /
-                  adapter.limits.maxComputeWorkgroupsPerDimension
-              ),
-            ]
-          : [itemsPerWorkgroup, 1];
-      console.log(dispatchGeometry);
+      const dispatchGeometry = [itemsPerWorkgroup, 1];
+      console.log(`itemsPerWorkgroup: ${itemsPerWorkgroup}
+      maxComputeWGPerDim: ${adapter.limits.maxComputeWorkgroupsPerDimension}
+      dispatchGeometry: ${dispatchGeometry}`);
+      while (
+        dispatchGeometry[0] > adapter.limits.maxComputeWorkgroupsPerDimension
+      ) {
+        console.log("Reducing x dimension");
+        dispatchGeometry[0] /= 2;
+        dispatchGeometry[1] *= 2;
+        console.log(`itemsPerWorkgroup: ${itemsPerWorkgroup}
+      maxComputeWGPerDim: ${adapter.limits.maxComputeWorkgroupsPerDimension}
+      dispatchGeometry: ${dispatchGeometry}`);
+      }
 
       const memsrc = new Uint32Array(memsrcSize);
       for (let i = 0; i < memsrc.length; i++) {
@@ -53,19 +55,19 @@
       const memcpyModule = device.createShaderModule({
         label: "copy large chunk of memory from memSrc to memDest",
         code: /* wgsl */ `
-              /* output */
-              @group(0) @binding(0) var<storage, read_write> memDest: array<u32>;
-              /* input */
-              @group(0) @binding(1) var<storage, read> memSrc: array<u32>;
+                    /* output */
+                    @group(0) @binding(0) var<storage, read_write> memDest: array<u32>;
+                    /* input */
+                    @group(0) @binding(1) var<storage, read> memSrc: array<u32>;
 
-              @compute @workgroup_size(${WORKGROUP_SIZE}) fn memcpyKernel(
-                @builtin(global_invocation_id) id: vec3u,
-                @builtin(num_workgroups) nwg: vec3u,
-                @builtin(workgroup_id) wgid: vec3u) {
-                  let i = id.y * nwg.x * ${WORKGROUP_SIZE} + id.x;
-                  memDest[i] = memSrc[i] + 1;
-              }
-            `,
+                    @compute @workgroup_size(${WORKGROUP_SIZE}) fn memcpyKernel(
+                      @builtin(global_invocation_id) id: vec3u,
+                      @builtin(num_workgroups) nwg: vec3u,
+                      @builtin(workgroup_id) wgid: vec3u) {
+                        let i = id.y * nwg.x * ${WORKGROUP_SIZE} + id.x;
+                        memDest[i] = memSrc[i] + 1;
+                    }
+                  `,
       });
 
       const memcpyPipeline = device.createComputePipeline({
