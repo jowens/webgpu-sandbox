@@ -33,19 +33,15 @@
       const memsrcSize = 2 ** 20; // (1M elements)
       const itemsPerWorkgroup = memsrcSize / WORKGROUP_SIZE;
       const dispatchGeometry = [itemsPerWorkgroup, 1];
-      console.log(`itemsPerWorkgroup: ${itemsPerWorkgroup}
-      maxComputeWGPerDim: ${adapter.limits.maxComputeWorkgroupsPerDimension}
-      dispatchGeometry: ${dispatchGeometry}`);
       while (
         dispatchGeometry[0] > adapter.limits.maxComputeWorkgroupsPerDimension
       ) {
-        console.log("Reducing x dimension");
         dispatchGeometry[0] /= 2;
         dispatchGeometry[1] *= 2;
-        console.log(`itemsPerWorkgroup: ${itemsPerWorkgroup}
-      maxComputeWGPerDim: ${adapter.limits.maxComputeWorkgroupsPerDimension}
-      dispatchGeometry: ${dispatchGeometry}`);
       }
+      console.log(`itemsPerWorkgroup: ${itemsPerWorkgroup}
+maxComputeWGPerDim: ${adapter.limits.maxComputeWorkgroupsPerDimension}
+dispatchGeometry: ${dispatchGeometry}`);
 
       const memsrc = new Uint32Array(memsrcSize);
       for (let i = 0; i < memsrc.length; i++) {
