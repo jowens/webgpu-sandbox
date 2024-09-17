@@ -30,7 +30,7 @@
       const timingHelper = new TimingHelper(device);
 
       const WORKGROUP_SIZE = 1; // assumes 1D workgroups for now
-      const memsrcSize = 2 ** 20; // (1M elements)
+      const memsrcSize = 2 ** 24; // (1M elements)
       const itemsPerWorkgroup = memsrcSize / WORKGROUP_SIZE;
       const dispatchGeometry = [itemsPerWorkgroup, 1];
       while (
@@ -40,6 +40,7 @@
         dispatchGeometry[1] *= 2;
       }
       console.log(`itemsPerWorkgroup: ${itemsPerWorkgroup}
+workgroup size: ${WORKGROUP_SIZE}
 maxComputeWGPerDim: ${adapter.limits.maxComputeWorkgroupsPerDimension}
 dispatchGeometry: ${dispatchGeometry}`);
 
@@ -114,7 +115,7 @@ dispatchGeometry: ${dispatchGeometry}`);
       });
       memcpyPass.setPipeline(memcpyPipeline);
       memcpyPass.setBindGroup(0, memcpyBindGroup);
-      // TODO handle not evenly divide by WORKGROUP_SIZE
+      // TODO handle not evenly divisible by WORKGROUP_SIZE
       memcpyPass.dispatchWorkgroups(...dispatchGeometry);
       memcpyPass.end();
 
@@ -156,8 +157,11 @@ dispatchGeometry: ${dispatchGeometry}`);
         console.log("No errors!");
       }
 
-      timingHelper.getResult().then((res) => {
-        console.log("Timing result", res);
+      timingHelper.getResult().then((ns) => {
+        console.log("Timing result", ns);
+        let bytesTransferred = 2 * memdest.byteLength;
+        console.log(`Transferred ${bytesTransferred} bytes`);
+        console.log(`Bandwidth = ${bytesTransferred / ns} GB/s`);
       });
 
       function fail(msg) {
