@@ -2,6 +2,8 @@
 // bridges gap between webgpu-utils's uniform handling
 //   and tweakpane's parameter setting
 
+// Sample code: https://jsgist.org/?src=c0184b52a049995d0fb038df3b8663f4
+
 // Creates a factory for an object that gets/sets elements of an array
 // based on accessors (like x, y, z or r, g, b)
 function makeNamedIndexProxyMaker(indices) {
