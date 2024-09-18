@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>.obj load test (three.js)</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <script type="module">
+      import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
+      import * as BufferGeometryUtils from "three/addons/utils/BufferGeometryUtils.js";
+
+      // instantiate a loader
+      const loader = new OBJLoader();
+
+      // load a resource
+      loader.load(
+        // resource URL
+        "http://localhost:8000/square-pyramid.obj",
+        // called when resource is loaded
+        function (object) {
+          console.log(object);
+          console.log(object.children);
+          console.log(object.children[0]);
+          console.log(object.children[0].geometry);
+
+          const bg = object.children[0].geometry;
+          console.log(bg);
+          object.children[0].geometry = BufferGeometryUtils.mergeVertices(bg);
+          console.log(object);
+          //          const object_geometry = object.children[0].geometry;
+          //          const bufferGeometry = new THREE.BufferGeometry().fromGeometry(
+          //            object_geometry
+          //          );
+          //          console.log(geometry);
+        },
+        // called when loading is in progresses
+        function (xhr) {
+          console.log((xhr.loaded / xhr.total) * 100 + "% loaded");
+        },
+        // called when loading has errors
+        function (error) {
+          console.log("Load error");
+        }
+      );
+    </script>
+  </body>
+</html>
