@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>.obj load test (obj-file-parser)</title>
+  </head>
+  <body>
+    <script
+      data-main="objload"
+      src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.7/require.min.js"
+    ></script>
+    <script src="https://cdn.jsdelivr.net/npm/obj-file-parser@0.6.2/dist/OBJFile.js"></script>
+    <script type="module">
+      //         "http://localhost:8000/square-pyramid.obj",
+
+      // "https://cdn.jsdelivr.net/npm/obj-file-parser@0.6.2/dist/OBJFile.js"
+      // const OBJFile = require("./OBJFile.js");
+
+      require.config({
+        paths: {
+          OBJFile:
+            "https://cdn.jsdelivr.net/npm/obj-file-parser@0.6.2/dist/OBJFile.js",
+        },
+      });
+
+      require(["OBJFile"], function (OBJFile) {
+        const fileContents =
+          "v 0 0 0 \n" + "v 0 1 0 \n" + "v 1 0 0 \n" + "f 1 2 3";
+
+        const objFile = new OBJFile(fileContents);
+
+        const output = objFile.parse();
+        console.log(output);
+      });
+    </script>
+  </body>
+</html>
