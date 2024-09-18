@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Catmull-Clark Subdivision Surfaces</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <script type="module">
+      import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
+      // instantiate a loader
+      const loader = new OBJLoader();
+
+      // load a resource
+      loader.load(
+        // resource URL
+        "http://localhost:8000/square-pyramid.obj",
+        // called when resource is loaded
+        function (object) {},
+        // called when loading is in progresses
+        function (xhr) {
+          console.log((xhr.loaded / xhr.total) * 100 + "% loaded");
+        },
+        // called when loading has errors
+        function (error) {
+          console.log("An error happened");
+        }
+      );
+    </script>
+  </body>
+</html>

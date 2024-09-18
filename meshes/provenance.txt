@@ -1,0 +1,8 @@
+Provenance for models:
+
+Square pyramid: entered by jdowens@ by hand, consistent
+  with Niessner et al. 2012.
+
+Teapots: https://graphics.cs.utah.edu/courses/cs6620/fall2013/?prj=5
+- teapot.obj
+- teapot-low.obj
