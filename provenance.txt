@@ -1,0 +1,3 @@
+objfile.js
+https://github.com/WesUnwin/obj-file-parser/blob/master/src/OBJFile.js
+MIT license
