@@ -173,6 +173,7 @@
           TOGGLE_DURATION: f32,
           WIGGLE_MAGNITUDE: f32,
           WIGGLE_SPEED: f32,
+          subdiv_level: u32,
           time: f32,
           timestep: f32,
         };
@@ -190,6 +191,7 @@
         TOGGLE_DURATION: 400.0, // number of timesteps between model toggle
         WIGGLE_MAGNITUDE: 0.025, // how much vertices are perturbed
         WIGGLE_SPEED: 0.05, // how quickly perturbations occur
+        subdiv_level: 0,
         time: 0.0,
         timestep: 1.0,
       });
@@ -214,6 +216,12 @@
         min: 0,
         max: 1,
         label: "Wiggle Speed",
+      });
+      pane.addBinding(uni.views.subdiv_level, 0, {
+        min: 0,
+        max: 1,
+        step: 1,
+        label: "Subdiv Level",
       });
 
       const WORKGROUP_SIZE = 64;
@@ -1192,7 +1200,10 @@
         const now = uni.views.time[0];
 
         render_pass.setIndexBuffer(triangle_indices_buffer, "uint32");
-        switch ((now / uni.views.TOGGLE_DURATION) & 1) {
+        // next line switches every TOGGLE_DURATION frames
+        // switch ((now / uni.views.TOGGLE_DURATION) & 1) {
+        // instead switch explicitly on subdiv_level:
+        switch (uni.views.subdiv_level[0]) {
           case 0 /* draws tris [0, base_triangles_count) */:
             start_idx = 0;
             end_idx = base_triangles_count * 3;
