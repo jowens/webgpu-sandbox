@@ -16,23 +16,101 @@
       // const fileContents =
       //   "v 0 0 0 \n" + "v 0 1 0 \n" + "v 1 0 0 \n" + "f 1 2 3";
       const fileContents = `
-# square pyramid from Niessner et al. (2012)
-v 0 0 1
-v -1 1 0
-v -1 -1 0
-v 1 -1 0
-v 1 1 0
-f 1 2 3
-f 1 3 4
-f 1 4 5
-f 1 5 2
-f 5 4 3 2
-`;
+                              # square pyramid from Niessner et al. (2012)
+                              v 0 0 1
+                              v -1 1 0
+                              v -1 -1 0
+                              v 1 -1 0
+                              v 1 1 0
+                              f 1 2 3
+                              f 1 3 4
+                              f 1 4 5
+                              f 1 5 2
+                              f 5 4 3 2
+                              `;
 
       const objFile = new OBJFile(fileContents);
+      const parsedObj = objFile.parse();
 
-      const output = objFile.parse();
-      console.log(output);
+      class SubdivMesh {
+        twoToPair(a, b) {
+          return Math.min(a, b) + "," + Math.max(a, b);
+        }
+        addToMap(m, pair, f_point) {
+          if (m.has(pair)) {
+            console.log(`Found ${pair}, it's ${m.get(pair)}`);
+            m.set(pair, m.get(pair).concat([f_point]));
+          } else {
+            console.log(`New ${pair}`);
+            m.set(pair, [f_point]);
+          }
+        }
+        constructor(verticesIn, facesIn) {
+          this.vertices = []; // why can't I do new Float32Array?
+          this.faces = []; // indexed per vertex
+          this.triangles = [];
+          this.valence = [];
+          this.offset = [];
+          this.vertices_ptr = [];
+
+          for (let i = 0; i < verticesIn.length; i++) {
+            this.vertices.push(
+              verticesIn[i].x,
+              verticesIn[i].y,
+              verticesIn[i].z,
+              1.0
+            );
+          }
+          // this.vertices_ptr = number of base vertices
+          this.vertices_ptr.push(this.vertices.length);
+          const edgeMap = new Map();
+          for (
+            let i = 0, face_offset = 0, f_points_ptr = this.vertices.length;
+            i < facesIn.length;
+            i++, f_points_ptr++, face_offset++
+          ) {
+            // i indexes the face from the input file
+            // face_offset indexes individual vertices within the faces
+            //   in the input file
+            // f_points_ptr indexes into the output vertex array
+            this.offset.push(face_offset);
+            this.valence.push(facesIn[i].vertices.length);
+            const thisFacePtr = this.faces.length;
+            for (let j = 0; j < facesIn[i].vertices.length; j++) {
+              // here is where we do the 1-indexed to 0-indexed conversion
+              //   (the vertexIndex - 1 below)
+              // if we wanted normals or texture coordinates from the obj
+              // file, here's where we'd record them
+              this.faces.push(facesIn[i].vertices[j].vertexIndex - 1);
+            }
+            // same loop through vertices in this face,
+            // but record edges this time
+            for (
+              let j = 0, v_base = thisFacePtr;
+              j < facesIn[i].vertices.length;
+              j++
+            ) {
+              const start = v_base + j;
+              let end = start + 1;
+              if (end >= this.faces.length) {
+                // wraparound
+                end = v_base;
+              }
+              this.addToMap(
+                edgeMap,
+                this.twoToPair(this.faces[start], this.faces[end]),
+                f_points_ptr // which F point is this?
+              );
+            }
+          }
+          console.log(edgeMap);
+        }
+      }
+      const mesh = new SubdivMesh(
+        parsedObj.models[0].vertices,
+        parsedObj.models[0].faces
+      );
+      console.log(mesh);
     </script>
   </body>
 </html>
