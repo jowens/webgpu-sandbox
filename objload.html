@@ -38,10 +38,8 @@
         }
         addToMap(m, pair, f_point) {
           if (m.has(pair)) {
-            console.log(`Found ${pair}, it's ${m.get(pair)}`);
             m.set(pair, m.get(pair).concat([f_point]));
           } else {
-            console.log(`New ${pair}`);
             m.set(pair, [f_point]);
           }
         }
@@ -51,6 +49,7 @@
           this.triangles = [];
           this.valence = [];
           this.offset = [];
+          this.edges = [];
           this.vertices_ptr = [];
 
           const vertex_size = 4; // elements
@@ -95,7 +94,7 @@
               const start = v_base + j;
               let end = start + 1;
               if (end >= this.faces.length) {
-                // wraparound
+                // wraparound, last vertex <-> first one
                 end = v_base;
               }
               this.addToMap(
@@ -105,6 +104,18 @@
               );
             }
           }
+          // now we have a map full of all edges
+          // if we have a manifold mesh, every edge has two faces
+          // let's assert that
+          edgeMap.forEach((f, v) => {
+            if (f.length != 2) {
+              console.log(`Non-manifold surface! edge ${v} has faces ${f}`);
+            }
+            // push into edge array: v[0], f[0], v[1], f[1]
+            // order might be a problem: it'll be in pushed-in order
+            const edge = v.split(",");
+            this.edges.push(parseInt(edge[0]), f[0], parseInt(edge[1]), f[1]);
+          });
           console.log(edgeMap);
         }
       }
