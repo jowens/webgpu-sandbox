@@ -53,6 +53,8 @@
           this.offset = [];
           this.vertices_ptr = [];
 
+          const vertex_size = 4; // elements
+
           for (let i = 0; i < verticesIn.length; i++) {
             this.vertices.push(
               verticesIn[i].x,
@@ -62,10 +64,10 @@
             );
           }
           // this.vertices_ptr = number of base vertices
-          this.vertices_ptr.push(this.vertices.length);
+          this.vertices_ptr.push(this.vertices.length / vertex_size);
           const edgeMap = new Map();
           for (
-            let i = 0, face_offset = 0, f_points_ptr = this.vertices.length;
+            let i = 0, face_offset = 0, f_points_ptr = this.vertices_ptr[0];
             i < facesIn.length;
             i++, f_points_ptr++, face_offset++
           ) {
