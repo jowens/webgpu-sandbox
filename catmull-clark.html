@@ -299,14 +299,8 @@
       // Q: Is a flattened 1D array the right way to represent base faces?
       // should it instead be a 2D array, [face][vertex]?
       // i am guessing flattened data structures (like this one) are preferred
-      // prettier-ignore
-      const base_faces = new Uint32Array([ /* FIG4 */
-        0, 1, 2, // vertices in face 0
-        0, 2, 3, //         ... face 1
-        0, 3, 4, //         ... face 2
-        0, 4, 1, //         ... face 3
-        4, 3, 2, 1, //      ... face 4
-      ]);
+      const base_faces = new Uint32Array(mesh.faces);
+
       // the following should be generated at compile time from base_faces
       // done manually here
       // these are quads; we manually specify triangles next
@@ -371,7 +365,7 @@
         triangle_indices.length * normals_object_size
       );
 
-      const base_face_valence = new Uint32Array([3, 3, 3, 3, 4]); /* FIG4 */
+      const base_face_valence = new Uint32Array(mesh.valence);
       // base_face_offset is exclusive_scan('+', base_face_valence)
       // TODO: compute that scan in a compute shader
       const base_face_offset = new Uint32Array([0, 3, 6, 9, 12]); /* FIG4 */
@@ -380,25 +374,16 @@
         base_vertex_positions.length / vertices_object_size;
 
       // prettier-ignore
-      const base_edges = new Uint32Array([ /* FIG4 */
-        0, 5, 2, 6,
-        1, 5, 0, 8,
-        2, 5, 1, 9,
-        0, 6, 3, 7,
-        3, 6, 2, 9,
-        0, 7, 4, 8,
-        4, 7, 3, 9,
-        1, 8, 4, 9,
-      ]);
+      const base_edges = new Uint32Array(mesh.edges);
       const edges_object_size = 4; // (two faces, two edges)
       const base_edges_count = base_edges.length / edges_object_size;
 
-      const base_vertex_valence = new Uint32Array([4, 3, 3, 3, 3]); /* FIG4 */
+      const base_vertex_valence = new Uint32Array(mesh.valence);
       // base_vertex_offset is 2 * exclusive_scan('+', base_vertex_valence)
       // TODO: compute that scan in a compute shader
-      const base_vertex_offset = new Uint32Array([0, 8, 14, 20, 26]); /* FIG4 */
+      const base_vertex_offset = new Uint32Array(mesh.vertex_offset);
       const base_vertex_count = base_vertex_valence.length;
-      const base_vertex_index = new Uint32Array([0, 1, 2, 3, 4]); /* FIG4 */
+      const base_vertex_index = new Uint32Array(mesh.vertex_index);
       // prettier-ignore
       const base_vertices = new Uint32Array([ /* FIG4 */
         4, 8, 1, 5, 2, 6, 3, 7,
@@ -1252,13 +1237,13 @@
         mappable_vertex_normals_result_buffer.unmap();
 
         timing_helper.getResult().then((res) => {
-          console.log("timing helper result", res);
+          // console.log("timing helper result", res);
         });
 
         //// console.log("vertex buffer", vertices_result);
         //// console.log("facet normals buffer", facet_normals_result);
         //// console.log("vertex normals buffer", vertex_normals_result);
-        console.log("time", uni.views.time[0]);
+        // console.log("time", uni.views.time[0]);
         // increment time
         uni.views.time[0] = uni.views.time[0] + uni.views.timestep[0];
         requestAnimationFrame(frame);
