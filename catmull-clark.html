@@ -292,7 +292,7 @@
         1, 1, 0, 1,   // vertex 4
       ]); // use this ONLY to populate (part of) the vertex buffer
       for (let i = 0; i < base_vertex_positions.length; i++) {
-        vertices[i] = base_vertex_positions[i];
+        vertices[i] = mesh.vertices[i];
       }
       // never use base_vertex_positions again
 
@@ -1263,7 +1263,7 @@
         uni.views.time[0] = uni.views.time[0] + uni.views.timestep[0];
         requestAnimationFrame(frame);
       }
-      // requestAnimationFrame(frame);
+      requestAnimationFrame(frame);
 
       function fail(msg) {
         // eslint-disable-next-line no-alert
