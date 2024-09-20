@@ -22,8 +22,8 @@ class SubdivMesh {
     this.vertices = []; // why can't I do new Float32Array?
     this.faces = []; // indexed per vertex
     this.triangles = [];
-    this.valence = [];
-    this.offset = [];
+    this.face_valence = [];
+    this.face_offset = [];
     this.edges = [];
     this.base_vertices = [];
     this.vertex_offset = [];
@@ -57,14 +57,15 @@ class SubdivMesh {
     for (
       let i = 0, face_offset = 0, f_points_ptr = this.vertices_ptr[0];
       i < facesIn.length;
-      i++, f_points_ptr++, face_offset++
+      i++, f_points_ptr++
     ) {
       // i indexes the face from the input file
       // face_offset indexes individual vertices within the faces
       //   in the input file
       // f_points_ptr indexes into the output vertex array
-      this.offset.push(face_offset);
-      this.valence.push(facesIn[i].vertices.length);
+      this.face_offset.push(face_offset);
+      this.face_valence.push(facesIn[i].vertices.length);
+      face_offset += facesIn[i].vertices.length;
       const thisFacePtr = this.faces.length;
       for (let j = 0; j < facesIn[i].vertices.length; j++) {
         // here is where we do the 1-indexed to 0-indexed conversion

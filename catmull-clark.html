@@ -365,7 +365,7 @@
         triangle_indices.length * normals_object_size
       );
 
-      const base_face_valence = new Uint32Array(mesh.valence);
+      const base_face_valence = new Uint32Array(mesh.face_valence);
       // base_face_offset is exclusive_scan('+', base_face_valence)
       // TODO: compute that scan in a compute shader
       const base_face_offset = new Uint32Array([0, 3, 6, 9, 12]); /* FIG4 */
@@ -378,7 +378,7 @@
       const edges_object_size = 4; // (two faces, two edges)
       const base_edges_count = base_edges.length / edges_object_size;
 
-      const base_vertex_valence = new Uint32Array(mesh.valence);
+      const base_vertex_valence = new Uint32Array(mesh.vertex_valence);
       // base_vertex_offset is 2 * exclusive_scan('+', base_vertex_valence)
       // TODO: compute that scan in a compute shader
       const base_vertex_offset = new Uint32Array(mesh.vertex_offset);
