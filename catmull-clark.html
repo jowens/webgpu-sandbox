@@ -134,6 +134,10 @@
       type="text/javascript"
       src="./webgpufundamentals-timing.js"
     ></script>
+    // parses file
+    <script type="text/javascript" src="./OBJFile.js"></script>
+    // builds data structure
+    <script type="text/javascript" src="./objload.js"></script>
     <script type="module">
       // inspiration: https://webgpufundamentals.org/webgpu/lessons/webgpu-fundamentals.html
 
@@ -259,6 +263,10 @@
       /** Initial test is a 5-face rectangular pyramid, which has 23 resulting elements
        * after a single subdivision. Only the first 5 points must be populated in
        * the vertices buffer. */
+
+      const objurl = "http://localhost:8000/square-pyramid.obj";
+      const mesh = await urlToMesh(objurl);
+      console.log(mesh);
 
       const vertices_size = 23;
       const vertices_object_size = 4; // float4s (but ignore w coord for now)
@@ -484,11 +492,11 @@
       vertices_write_ptr += base_faces_count;
 
       /** output vertices from face kernel, for debugging:
-       * 5: [-0.6666666865348816, 0, 0.3333333432674408, 0]
-       * 6: [0, -0.6666666865348816, 0.3333333432674408, 0]
-       * 7: [0.6666666865348816, 0, 0.3333333432674408, 0]
-       * 8: [0, 0.6666666865348816, 0.3333333432674408, 0]
-       * 9: [0, 0, 0, 0]
+       * 5 | [-0.6666666865348816, 0, 0.3333333432674408, 0]
+       * 6 | [0, -0.6666666865348816, 0.3333333432674408, 0]
+       * 7 | [0.6666666865348816, 0, 0.3333333432674408, 0]
+       * 8 | [0, 0.6666666865348816, 0.3333333432674408, 0]
+       * 9 | [0, 0, 0, 0]
        */
 
       /** (2) Calculation of edge points
@@ -1255,7 +1263,7 @@
         uni.views.time[0] = uni.views.time[0] + uni.views.timestep[0];
         requestAnimationFrame(frame);
       }
-      requestAnimationFrame(frame);
+      // requestAnimationFrame(frame);
 
       function fail(msg) {
         // eslint-disable-next-line no-alert

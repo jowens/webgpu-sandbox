@@ -132,4 +132,15 @@ const mesh = new SubdivMesh(
   parsedObj.models[0].vertices,
   parsedObj.models[0].faces
 );
-console.log(mesh);
+
+async function urlToMesh(url) {
+  const response = await fetch(url);
+  const objtext = await response.text();
+  const objFile = new OBJFile(objtext);
+  const parsedObj = objFile.parse();
+  const mesh = new SubdivMesh(
+    parsedObj.models[0].vertices,
+    parsedObj.models[0].faces
+  );
+  return mesh;
+}
