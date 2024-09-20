@@ -368,13 +368,23 @@
       const base_face_valence = new Uint32Array(mesh.face_valence);
       // base_face_offset is exclusive_scan('+', base_face_valence)
       // TODO: compute that scan in a compute shader
-      const base_face_offset = new Uint32Array([0, 3, 6, 9, 12]); /* FIG4 */
+      const base_face_offset = new Uint32Array(mesh.face_offset);
       const base_faces_count = base_face_valence.length;
       let vertices_write_ptr =
         base_vertex_positions.length / vertices_object_size;
 
       // prettier-ignore
-      const base_edges = new Uint32Array(mesh.edges);
+      const base_edges = new Uint32Array([ /* FIG4 */
+             0, 5, 2, 6,
+              1, 5, 0, 8,
+              2, 5, 1, 9,
+             0, 6, 3, 7,
+              3, 6, 2, 9,
+              0, 7, 4, 8,
+              4, 7, 3, 9,
+              1, 8, 4, 9,
+            ]); //      const base_edges = new Uint32Array(mesh.edges);
+      console.log(base_edges);
       const edges_object_size = 4; // (two faces, two edges)
       const base_edges_count = base_edges.length / edges_object_size;
 
@@ -384,43 +394,36 @@
       const base_vertex_offset = new Uint32Array(mesh.vertex_offset);
       const base_vertex_count = base_vertex_valence.length;
       const base_vertex_index = new Uint32Array(mesh.vertex_index);
-      // prettier-ignore
-      const base_vertices = new Uint32Array([ /* FIG4 */
-        4, 8, 1, 5, 2, 6, 3, 7,
-        4, 9, 2, 5, 0, 8,
-        3, 6, 0, 5, 1, 9,
-        4, 7, 0, 6, 2, 9,
-        1, 8, 0, 7, 3, 9,
-      ]);
+      const base_vertices = new Uint32Array(mesh.base_vertices.flat());
 
       const perturb_input_vertices_module = device.createShaderModule({
         label: "perturb input vertices module",
         code: /* wgsl */ `
-              ${uniforms_code} /* this specifies @group(0) @binding(0) */
-              /* input + output */
-              @group(0) @binding(1) var<storage, read_write> vertices: array<vec3f>;
-              @compute @workgroup_size(${WORKGROUP_SIZE}) fn perturbInputVerticesKernel(
-                       @builtin(global_invocation_id) id: vec3u) {
-                let i = id.x;
-                if (i < arrayLength(&vertices)) {
-                  let t = myUniforms.time * myUniforms.WIGGLE_SPEED;
-                  let stepsize = myUniforms.WIGGLE_MAGNITUDE;
-                  let angle_start = f32(i);
-                  /* philosophy of animating base vertices:
-                   *
-                   * - vertex should not move in aggregate over time
-                   * - each vertex should move ~differently
-                   *
-                   * design: each vertex moves in a "random" direction by a fixed amt
-                   *         starting direction differs per vertex ("angle_start")
-                   *         movements cancel each other out over time
-                   */
-                  vertices[i] += vec3(stepsize * cos(angle_start + t),
-                                      stepsize * sin(angle_start + t),
-                                      stepsize * 0.5 * sin(angle_start + t));
-                }
-              }
-            `,
+                    ${uniforms_code} /* this specifies @group(0) @binding(0) */
+                    /* input + output */
+                    @group(0) @binding(1) var<storage, read_write> vertices: array<vec3f>;
+                    @compute @workgroup_size(${WORKGROUP_SIZE}) fn perturbInputVerticesKernel(
+                             @builtin(global_invocation_id) id: vec3u) {
+                      let i = id.x;
+                      if (i < arrayLength(&vertices)) {
+                        let t = myUniforms.time * myUniforms.WIGGLE_SPEED;
+                        let stepsize = myUniforms.WIGGLE_MAGNITUDE;
+                        let angle_start = f32(i);
+                        /* philosophy of animating base vertices:
+                         *
+                         * - vertex should not move in aggregate over time
+                         * - each vertex should move ~differently
+                         *
+                         * design: each vertex moves in a "random" direction by a fixed amt
+                         *         starting direction differs per vertex ("angle_start")
+                         *         movements cancel each other out over time
+                         */
+                        vertices[i] += vec3(stepsize * cos(angle_start + t),
+                                            stepsize * sin(angle_start + t),
+                                            stepsize * 0.5 * sin(angle_start + t));
+                      }
+                    }
+                  `,
       });
 
       /** (1) Calculation of face points
@@ -437,41 +440,41 @@
       const face_points_module = device.createShaderModule({
         label: "face points module",
         code: /* wgsl */ `
-              /* input + output */
-              @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
-                      /* input */
-              @group(0) @binding(1) var<storage, read> base_faces: array<u32>;
-              @group(0) @binding(2) var<storage, read> base_face_offset: array<u32>;
-              @group(0) @binding(3) var<storage, read> base_face_valence: array<u32>;
+                    /* input + output */
+                    @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
+                            /* input */
+                    @group(0) @binding(1) var<storage, read> base_faces: array<u32>;
+                    @group(0) @binding(2) var<storage, read> base_face_offset: array<u32>;
+                    @group(0) @binding(3) var<storage, read> base_face_valence: array<u32>;
 
-              /** Niessner 2012:
-                * "The face kernel requires two buffers: one index buffer, whose
-                * entries are the vertex buffer indices for each vertex of the face; a
-                * second buffer stores the valence of the face along with an offset
-                * into the index buffer for the first vertex of each face."
-                *
-                * implementation above: "index buffer" is base_faces
-                *                       "valence of the face" is base_face_valence
-                *                       "offset into the index buffer" is base_face_offset
-                */
+                    /** Niessner 2012:
+                      * "The face kernel requires two buffers: one index buffer, whose
+                      * entries are the vertex buffer indices for each vertex of the face; a
+                      * second buffer stores the valence of the face along with an offset
+                      * into the index buffer for the first vertex of each face."
+                      *
+                      * implementation above: "index buffer" is base_faces
+                      *                       "valence of the face" is base_face_valence
+                      *                       "offset into the index buffer" is base_face_offset
+                      */
 
-              @compute @workgroup_size(${WORKGROUP_SIZE}) fn facePointsKernel(
-                @builtin(global_invocation_id) id: vec3u) {
-                let i = id.x;
-                if (i < arrayLength(&base_face_offset)) {
-                  /* TODO: exit if my index is larger than the size of the input */
+                    @compute @workgroup_size(${WORKGROUP_SIZE}) fn facePointsKernel(
+                      @builtin(global_invocation_id) id: vec3u) {
+                      let i = id.x;
+                      if (i < arrayLength(&base_face_offset)) {
+                        /* TODO: exit if my index is larger than the size of the input */
 
-                  let out = i + ${vertices_write_ptr};
-                  vertices[out] = vec3f(0,0,0);
-                  for (var j: u32 = base_face_offset[i]; j < base_face_offset[i] + base_face_valence[i]; j++) {
-                    let face_vertex = base_faces[j];
-                    vertices[out] += vertices[face_vertex];
-                  }
-                  vertices[out] /= f32(base_face_valence[i]);
-                }
-                // TODO: decide on vec3f or vec4f and set w if so
-              }
-            `,
+                        let out = i + ${vertices_write_ptr};
+                        vertices[out] = vec3f(0,0,0);
+                        for (var j: u32 = base_face_offset[i]; j < base_face_offset[i] + base_face_valence[i]; j++) {
+                          let face_vertex = base_faces[j];
+                          vertices[out] += vertices[face_vertex];
+                        }
+                        vertices[out] /= f32(base_face_valence[i]);
+                      }
+                      // TODO: decide on vec3f or vec4f and set w if so
+                    }
+                  `,
       });
 
       vertices_write_ptr += base_faces_count;
@@ -496,31 +499,31 @@
       const edge_points_module = device.createShaderModule({
         label: "edge points module",
         code: /* wgsl */ `
-              /* input + output */
-              @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
-              /* input */
-              @group(0) @binding(1) var<storage, read> base_edges: array<vec4u>;
+                    /* input + output */
+                    @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
+                    /* input */
+                    @group(0) @binding(1) var<storage, read> base_edges: array<vec4u>;
 
-              /** "Since a single (non-boundary) edge always has two incident faces and vertices,
-               * the edge kernel needs a buffer for the indices of these entities."
-               *
-               * implementation above: "a buffer for the indices of these entities" is base_edges
-               */
+                    /** "Since a single (non-boundary) edge always has two incident faces and vertices,
+                     * the edge kernel needs a buffer for the indices of these entities."
+                     *
+                     * implementation above: "a buffer for the indices of these entities" is base_edges
+                     */
 
-              @compute @workgroup_size(${WORKGROUP_SIZE}) fn edge_points_kernel(
-                @builtin(global_invocation_id) id: vec3u) {
-                  let i = id.x;
-                  if (i < arrayLength(&base_edges)) {
-                    let out = i + ${vertices_write_ptr};
-                    let edge_id = i;
-                    vertices[out] = vec3f(0,0,0);
-                    for (var j: u32 = 0; j < 4; j++) {
-                      vertices[out] += vertices[base_edges[edge_id][j]];
-                    }
-                    vertices[out] *= 0.25;
-                  }
-                }
-            `,
+                    @compute @workgroup_size(${WORKGROUP_SIZE}) fn edge_points_kernel(
+                      @builtin(global_invocation_id) id: vec3u) {
+                        let i = id.x;
+                        if (i < arrayLength(&base_edges)) {
+                          let out = i + ${vertices_write_ptr};
+                          let edge_id = i;
+                          vertices[out] = vec3f(0,0,0);
+                          for (var j: u32 = 0; j < 4; j++) {
+                            vertices[out] += vertices[base_edges[edge_id][j]];
+                          }
+                          vertices[out] *= 0.25;
+                        }
+                      }
+                  `,
       });
 
       vertices_write_ptr += base_edges_count;
@@ -566,38 +569,38 @@
       const vertex_points_module = device.createShaderModule({
         label: "vertex points module",
         code: /* wgsl */ `
-              /* input + output */
-              @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
-              /* input */
-              @group(0) @binding(1) var<storage, read> base_vertices: array<u32>;
-              @group(0) @binding(2) var<storage, read> base_vertex_offset: array<u32>;
-              @group(0) @binding(3) var<storage, read> base_vertex_valence: array<u32>;
-              @group(0) @binding(4) var<storage, read> base_vertex_index: array<u32>;
+                    /* input + output */
+                    @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
+                    /* input */
+                    @group(0) @binding(1) var<storage, read> base_vertices: array<u32>;
+                    @group(0) @binding(2) var<storage, read> base_vertex_offset: array<u32>;
+                    @group(0) @binding(3) var<storage, read> base_vertex_valence: array<u32>;
+                    @group(0) @binding(4) var<storage, read> base_vertex_index: array<u32>;
 
-              /** "We use an index buffer containing the indices of the incident edge and
-               * vertex points."
-               *
-               * implementation above: "a buffer for the indices of these entities" is base_vertices
-               */
+                    /** "We use an index buffer containing the indices of the incident edge and
+                     * vertex points."
+                     *
+                     * implementation above: "a buffer for the indices of these entities" is base_vertices
+                     */
 
-              @compute @workgroup_size(${WORKGROUP_SIZE}) fn vertex_points_kernel(
-                @builtin(global_invocation_id) id: vec3u) {
-                  let i = id.x;
-                  if (i < arrayLength(&base_vertex_offset)) {
-                    let out = i + ${vertices_write_ptr};
-                    let valence = base_vertex_valence[i];
-                    vertices[out] = vec3f(0,0,0);
-                    for (var j: u32 = base_vertex_offset[i]; j < base_vertex_offset[i] + 2 * base_vertex_valence[i]; j++) {
-                      let base_vertex = base_vertices[j];
-                      vertices[out] += vertices[base_vertex];
+                    @compute @workgroup_size(${WORKGROUP_SIZE}) fn vertex_points_kernel(
+                      @builtin(global_invocation_id) id: vec3u) {
+                        let i = id.x;
+                        if (i < arrayLength(&base_vertex_offset)) {
+                          let out = i + ${vertices_write_ptr};
+                          let valence = base_vertex_valence[i];
+                          vertices[out] = vec3f(0,0,0);
+                          for (var j: u32 = base_vertex_offset[i]; j < base_vertex_offset[i] + 2 * base_vertex_valence[i]; j++) {
+                            let base_vertex = base_vertices[j];
+                            vertices[out] += vertices[base_vertex];
+                          }
+                          vertices[out] /= f32(valence);
+                          vertices[out] += f32(valence - 2) * vertices[base_vertex_index[i]];
+                          vertices[out] /= f32(valence);
+                          // TODO: decide on vec3f or vec4f and set w if so
+                      }
                     }
-                    vertices[out] /= f32(valence);
-                    vertices[out] += f32(valence - 2) * vertices[base_vertex_index[i]];
-                    vertices[out] /= f32(valence);
-                    // TODO: decide on vec3f or vec4f and set w if so
-                }
-              }
-            `,
+                  `,
       });
 
       /** output vertices from vertex kernel, for debugging
@@ -611,128 +614,128 @@
       const facet_normals_module = device.createShaderModule({
         label: "compute facet normals module",
         code: /* wgsl */ `
-              /* output */
-              @group(0) @binding(0) var<storage, read_write> facet_normals: array<vec3f>;
-              /* input */
-              @group(0) @binding(1) var<storage, read> vertices: array<vec3f>;
-              @group(0) @binding(2) var<storage, read> triangle_indices: array<u32>;
+                    /* output */
+                    @group(0) @binding(0) var<storage, read_write> facet_normals: array<vec3f>;
+                    /* input */
+                    @group(0) @binding(1) var<storage, read> vertices: array<vec3f>;
+                    @group(0) @binding(2) var<storage, read> triangle_indices: array<u32>;
 
-               /** Algorithm:
-                * For tri in all triangles:
-                *   Fetch all 3 vertices of tri
-                *   Compute normalize(cross(v1-v0, v2-v0))
-                *   For each vertex in tri:
-                *     Atomically add it to vertex_normals[vertex]
-                *     /* Can't do this! No f32 atomics */
-                * For vertex in all vertices:
-                *   Normalize vertex_normals[vertex]
-                *
-                * OK, so we can't do this approach w/o f32 atomics
-                * So we will instead convert this scatter to gather
-                * This is wasteful; every vertex will walk the entire
-                *   index array looking for matches.
-                * Could alternately build a mapping of {vtx->facet}
-                *
-                * (1) For tri in all triangles:
-                *   Fetch all 3 vertices of tri
-                *   Compute normalize(cross(v1-v0, v2-v0))
-                *   Store that vector as a facet normal
-                * (2) For vertex in all vertices:
-                *   normal[vertex] = (0,0,0)
-                *   For tri in all triangles:
-                *     // note expensive doubly-nested loop!
-                *     if my vertex is in that triangle:
-                *       normal[vertex] += facet_normal[tri]
-                *   normalize(normal[vertex])
-                */
-              @compute @workgroup_size(${WORKGROUP_SIZE}) fn facet_normals_kernel(
-                @builtin(global_invocation_id) id: vec3u) {
-                  let tri = id.x;
-                  if (tri < arrayLength(&facet_normals)) {
-                    /* note triangle_indices is u32 not vec3, do math accordingly */
-                    let v0: vec3f = vertices[triangle_indices[tri * 3]];
-                    let v1: vec3f = vertices[triangle_indices[tri * 3 + 1]];
-                    let v2: vec3f = vertices[triangle_indices[tri * 3 + 2]];
-                    facet_normals[tri] = normalize(cross(v1-v0, v2-v0));
-                  }
-                }
-            `,
+                     /** Algorithm:
+                      * For tri in all triangles:
+                      *   Fetch all 3 vertices of tri
+                      *   Compute normalize(cross(v1-v0, v2-v0))
+                      *   For each vertex in tri:
+                      *     Atomically add it to vertex_normals[vertex]
+                      *     /* Can't do this! No f32 atomics */
+                      * For vertex in all vertices:
+                      *   Normalize vertex_normals[vertex]
+                      *
+                      * OK, so we can't do this approach w/o f32 atomics
+                      * So we will instead convert this scatter to gather
+                      * This is wasteful; every vertex will walk the entire
+                      *   index array looking for matches.
+                      * Could alternately build a mapping of {vtx->facet}
+                      *
+                      * (1) For tri in all triangles:
+                      *   Fetch all 3 vertices of tri
+                      *   Compute normalize(cross(v1-v0, v2-v0))
+                      *   Store that vector as a facet normal
+                      * (2) For vertex in all vertices:
+                      *   normal[vertex] = (0,0,0)
+                      *   For tri in all triangles:
+                      *     // note expensive doubly-nested loop!
+                      *     if my vertex is in that triangle:
+                      *       normal[vertex] += facet_normal[tri]
+                      *   normalize(normal[vertex])
+                      */
+                    @compute @workgroup_size(${WORKGROUP_SIZE}) fn facet_normals_kernel(
+                      @builtin(global_invocation_id) id: vec3u) {
+                        let tri = id.x;
+                        if (tri < arrayLength(&facet_normals)) {
+                          /* note triangle_indices is u32 not vec3, do math accordingly */
+                          let v0: vec3f = vertices[triangle_indices[tri * 3]];
+                          let v1: vec3f = vertices[triangle_indices[tri * 3 + 1]];
+                          let v2: vec3f = vertices[triangle_indices[tri * 3 + 2]];
+                          facet_normals[tri] = normalize(cross(v1-v0, v2-v0));
+                        }
+                      }
+                  `,
       });
 
       const vertex_normals_module = device.createShaderModule({
         label: "compute vertex normals module",
         code: /* wgsl */ `
-              /* output */
-              @group(0) @binding(0) var<storage, read_write> vertex_normals: array<vec3f>;
-              /* input */
-              @group(0) @binding(1) var<storage, read> facet_normals: array<vec3f>;
-              @group(0) @binding(2) var<storage, read> triangle_indices: array<u32>;
+                    /* output */
+                    @group(0) @binding(0) var<storage, read_write> vertex_normals: array<vec3f>;
+                    /* input */
+                    @group(0) @binding(1) var<storage, read> facet_normals: array<vec3f>;
+                    @group(0) @binding(2) var<storage, read> triangle_indices: array<u32>;
 
-              /* see facet_normals_module for algorithm */
+                    /* see facet_normals_module for algorithm */
 
-              @compute @workgroup_size(${WORKGROUP_SIZE}) fn vertex_normals_kernel(
-                @builtin(global_invocation_id) id: vec3u) {
-                  let vtx = id.x;
-                  if (vtx < arrayLength(&vertex_normals)) {
-                    vertex_normals[vtx] = vec3f(0, 0, 0);
-                    /* note triangle_indices is u32 not vec3, do math accordingly */
-                    for (var tri: u32 = 0; tri < arrayLength(&triangle_indices) / 3; tri++) {
-                      for (var tri_vtx: u32 = 0; tri_vtx < 3; tri_vtx++) { /* unroll */
-                        if (vtx == triangle_indices[tri * 3 + tri_vtx]) {
-                          vertex_normals[vtx] += facet_normals[tri];
+                    @compute @workgroup_size(${WORKGROUP_SIZE}) fn vertex_normals_kernel(
+                      @builtin(global_invocation_id) id: vec3u) {
+                        let vtx = id.x;
+                        if (vtx < arrayLength(&vertex_normals)) {
+                          vertex_normals[vtx] = vec3f(0, 0, 0);
+                          /* note triangle_indices is u32 not vec3, do math accordingly */
+                          for (var tri: u32 = 0; tri < arrayLength(&triangle_indices) / 3; tri++) {
+                            for (var tri_vtx: u32 = 0; tri_vtx < 3; tri_vtx++) { /* unroll */
+                              if (vtx == triangle_indices[tri * 3 + tri_vtx]) {
+                                vertex_normals[vtx] += facet_normals[tri];
+                              }
+                            }
+                          }
+                          vertex_normals[vtx] = normalize(vertex_normals[vtx]);
                         }
-                      }
                     }
-                    vertex_normals[vtx] = normalize(vertex_normals[vtx]);
-                  }
-              }
-            `,
+                  `,
       });
 
       const render_module = device.createShaderModule({
         label: "render module",
         code: /* wgsl */ `
-              struct VertexInput {
-                @location(0) pos: vec4f,
-                @location(1) vertex_normals: vec3f,
-                @builtin(vertex_index) vertex_index: u32,
-              };
+                    struct VertexInput {
+                      @location(0) pos: vec4f,
+                      @location(1) vertex_normals: vec3f,
+                      @builtin(vertex_index) vertex_index: u32,
+                    };
 
-              struct VertexOutput {
-                @builtin(position) pos: vec4f,
-                @location(0) color: vec4f,
-              };
+                    struct VertexOutput {
+                      @builtin(position) pos: vec4f,
+                      @location(0) color: vec4f,
+                    };
 
-              // https://webgpu.github.io/webgpu-samples/?sample=rotatingCube#basic.vert.wgsl
-              struct Uniforms {
-                modelViewProjectionMatrix : mat4x4f,
-              }
-              @binding(0) @group(0) var<uniform> uniforms : Uniforms;
+                    // https://webgpu.github.io/webgpu-samples/?sample=rotatingCube#basic.vert.wgsl
+                    struct Uniforms {
+                      modelViewProjectionMatrix : mat4x4f,
+                    }
+                    @binding(0) @group(0) var<uniform> uniforms : Uniforms;
 
-              @vertex
-              fn vertex_main(@location(0) pos: vec4f,
-                            @location(1) norm: vec3f,
-                            @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
-                var output: VertexOutput;
-                output.pos = uniforms.modelViewProjectionMatrix * pos;
-                output.color = vec4f( // this generates 64 different colors
-                  0.35 + select(0, 0.6, (vertex_index & 1) != 0) - select(0, 0.3, (vertex_index & 8) != 0),
-                  0.35 + select(0, 0.6, (vertex_index & 2) != 0) - select(0, 0.3, (vertex_index & 16) != 0),
-                  0.35 + select(0, 0.6, (vertex_index & 4) != 0) - select(0, 0.3, (vertex_index & 32) != 0),
-                  0.75 /* partial transparency might aid debugging */);
-                /* let's try "lighting", in model space */
-                /* this is just a dot product with the infinite white light at (1,1,1) */
-                /* it's just choosing the normal vector as the color, scaled to [0,1] */
-                // output.color = vec4f(norm.x, norm.y, norm.z, 0.75);
-                output.color = vec4f(0.5*(norm.x+1), 0.5*(norm.y+1), 0.5*(norm.z+1), 0.75);
-                return output;
-              }
+                    @vertex
+                    fn vertex_main(@location(0) pos: vec4f,
+                                  @location(1) norm: vec3f,
+                                  @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
+                      var output: VertexOutput;
+                      output.pos = uniforms.modelViewProjectionMatrix * pos;
+                      output.color = vec4f( // this generates 64 different colors
+                        0.35 + select(0, 0.6, (vertex_index & 1) != 0) - select(0, 0.3, (vertex_index & 8) != 0),
+                        0.35 + select(0, 0.6, (vertex_index & 2) != 0) - select(0, 0.3, (vertex_index & 16) != 0),
+                        0.35 + select(0, 0.6, (vertex_index & 4) != 0) - select(0, 0.3, (vertex_index & 32) != 0),
+                        0.75 /* partial transparency might aid debugging */);
+                      /* let's try "lighting", in model space */
+                      /* this is just a dot product with the infinite white light at (1,1,1) */
+                      /* it's just choosing the normal vector as the color, scaled to [0,1] */
+                      // output.color = vec4f(norm.x, norm.y, norm.z, 0.75);
+                      output.color = vec4f(0.5*(norm.x+1), 0.5*(norm.y+1), 0.5*(norm.z+1), 0.75);
+                      return output;
+                    }
 
-              @fragment
-              fn fragment_main(input: VertexOutput) -> @location(0) vec4f {
-                return input.color;
-              }
-            `,
+                    @fragment
+                    fn fragment_main(input: VertexOutput) -> @location(0) vec4f {
+                      return input.color;
+                    }
+                  `,
       });
 
       const perturb_pipeline = device.createComputePipeline({
