@@ -33,16 +33,6 @@
       const parsedObj = objFile.parse();
 
       class SubdivMesh {
-        twoToPair(a, b) {
-          return Math.min(a, b) + "," + Math.max(a, b);
-        }
-        addToMap(m, pair, f_point) {
-          if (m.has(pair)) {
-            m.set(pair, m.get(pair).concat([f_point]));
-          } else {
-            m.set(pair, [f_point]);
-          }
-        }
         constructor(verticesIn, facesIn) {
           this.vertices = []; // why can't I do new Float32Array?
           this.faces = []; // indexed per vertex
@@ -56,7 +46,14 @@
           this.vertex_index = [];
           this.vertices_ptr = [];
 
-          const vertex_size = 4; // elements
+          const vertex_size = 4; // # elements per vertex
+
+          // OBJ stores faces in CCW order
+          // The OBJ (or .OBJ) file format stores vertices in a counterclockwise order by default. This means that if the vertices are ordered counterclockwise around a face, both the face and the normal will point toward the viewer. If the vertices are ordered clockwise, both will point away from the viewer.
+          // this means that going in declaration order means face is on the LEFT
+          // base_edges:
+          // v0 f0 v1 f1
+          // walking from v0 to v1 means f0 is on right and f1 is on left
 
           const vertexNeighborsMap = new Map();
           for (let i = 0; i < verticesIn.length; i++) {
@@ -109,11 +106,9 @@
                 console.log(`ERROR: edge ${edge} already in edgeMap`);
               }
               edgeMap.set(edge, f_points_ptr);
-              console.log(`Edge ${edge} : face on the left is ${f_points_ptr}`);
             }
           }
           // now we have a map (edgeMap) full of {edge -> face}
-          console.log(edgeMap);
           edgeMap.forEach((face, edge) => {
             const v = edge.split(",").map((n) => parseInt(n, 10));
             const reverseEdge = [v[1], v[0]].join();
@@ -136,17 +131,6 @@
               vertexNeighborsMap.get(v[1]).push(v[0], f[0]);
             }
           });
-          console.log(edgeMap);
-
-          // leaving this on Th Sep 19
-          // what order do we want from base_faces?
-          // looks like we're walking and recording faces on our left as we walk
-          // OBJ stores faces in CCW order
-          // The OBJ (or .OBJ) file format stores vertices in a counterclockwise order by default. This means that if the vertices are ordered counterclockwise around a face, both the face and the normal will point toward the viewer. If the vertices are ordered clockwise, both will point away from the viewer.
-          // this means that going in declaration order means face is on the LEFT
-          // base_edges:
-          // v0 f0 v1 f1
-          // walking from v0 to v1 means f0 is on right and f1 is on left
 
           // now we populate base_vertices
           var vertex_offset = 0;
