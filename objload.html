@@ -51,6 +51,9 @@
           this.offset = [];
           this.edges = [];
           this.base_vertices = [];
+          this.vertex_offset = [];
+          this.vertex_valence = [];
+          this.vertex_index = [];
           this.vertices_ptr = [];
 
           const vertex_size = 4; // elements
@@ -129,16 +132,8 @@
             if (f[1] > f[0]) {
               // in Niessner, all edges have f[1] > f[0]
               this.edges.push(v[0], f[0], v[1], f[1]);
-              console.log(vertexNeighborsMap);
-              console.log(`Considering edge ${v[0]}, ${v[1]}, ${f}`);
-              console.log(`${v[0]} is ${vertexNeighborsMap.get(v[0])}`);
-              console.log(`pushing ${v[0]} => [${v[1]}, ${f[1]}]`);
               vertexNeighborsMap.get(v[0]).push(v[1], f[1]);
-              console.log(vertexNeighborsMap);
-              console.log(`${v[1]} is ${vertexNeighborsMap.get(v[1])}`);
-              console.log(`pushing ${v[1]} => [${v[0]}, ${f[0]}]`);
               vertexNeighborsMap.get(v[1]).push(v[0], f[0]);
-              console.log(vertexNeighborsMap);
             }
           });
           console.log(edgeMap);
@@ -152,12 +147,16 @@
           // base_edges:
           // v0 f0 v1 f1
           // walking from v0 to v1 means f0 is on right and f1 is on left
-          // FIX: above we're entering each edge twice, so base_edges is 2x too big
-          // FIX: probably wrong entry order too v0 f0 v1 f1
 
           // now we populate base_vertices
-          for (let i = 0; i < verticesIn.length; i++) {}
-          console.log(vertexNeighborsMap);
+          var vertex_offset = 0;
+          vertexNeighborsMap.forEach((neighbors, vertex) => {
+            this.vertex_index.push(vertex);
+            this.base_vertices.push(neighbors);
+            this.vertex_valence.push(neighbors.length / 2);
+            this.vertex_offset.push(vertex_offset);
+            vertex_offset += neighbors.length;
+          });
         }
       }
       const mesh = new SubdivMesh(
