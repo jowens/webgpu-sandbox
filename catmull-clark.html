@@ -279,12 +279,14 @@
        * the vertices buffer. */
 
       // const objurl = "http://localhost:8000/square-pyramid.obj";
-      const objurl =
+      const objurl1 =
         "https://gist.githubusercontent.com/jowens/fb3a19db8f4c6271cd9b730b77f7d210/raw/311e98007d600dd10a3425be8312139dc442ca5d/square-pyramid.obj";
-      const mesh = await urlToMesh(objurl);
+      const objurl2 =
+        "https://gist.githubusercontent.com/jowens/35c1829003e62b380520f4fc043c9746/raw/e262f387f525648d2a563a9754012673c3c8a8e0/teapot.obj";
+      const mesh = await urlToMesh(objurl2);
       console.log(mesh);
 
-      const vertices_size = 23;
+      const vertices_size = mesh.level_base_ptr[1].v + mesh.level_count[1].v;
       const vertices_object_size = 4; // float4s (but ignore w coord for now)
       const normals_object_size = 4; // float4s (but ignore w coord for now)
       // float3s were fraught with peril (padding)
