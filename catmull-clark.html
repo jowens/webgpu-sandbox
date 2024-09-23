@@ -317,59 +317,12 @@
       // i am guessing flattened data structures (like this one) are preferred
       const base_faces = new Uint32Array(mesh.faces);
 
-      // the following should be generated at compile time from base_faces
-      // done manually here
-      // these are quads; we manually specify triangles next
-      // prettier-ignore
-      const subdiv_1_faces = new Uint32Array([
-        18, 11, 5, 10, // top ring
-        18, 10, 6, 13,
-        18, 13, 7, 15,
-        18, 15, 8, 11,
-        10, 5, 12, 20, // lower ring
-        6, 10, 20, 14,
-        13, 6, 14, 21,
-        7, 13, 21, 16,
-        15, 7, 16, 22,
-        8, 15, 22, 17,
-        11, 8, 17, 19,
-        5, 11, 19, 12,
-        9, 14, 20, 12, // pyramid base
-        9, 16, 21, 14,
-        9, 17, 22, 16,
-        9, 12, 19, 17,
-      ]);
       // the following is manually generated tri indexes from base_faces
       //   and subdiv_1_faces
       // TODO: this could totally be generated programmatically from
       //   base_faces plus base_face_valence
       // prettier-ignore
-      const triangle_indices = new Uint32Array([
-        0, 1, 2, // vertices in tri 0
-        0, 2, 3, //         ... tri 1
-        0, 3, 4, //         ... tri 2
-        0, 4, 1, //         ... tri 3
-        4, 3, 2, //         ... tri 4
-        4, 2, 1, //         ... tri 5
-        // end of base triangles
-        // begin subdiv_1 triangles
-        18, 11, 5,  18, 5, 10, // top ring
-        18, 10, 6,  18, 6, 13,
-        18, 13, 7,  18, 7, 15,
-        18, 15, 8,  18, 8, 11,
-        10, 5, 12,  10, 12, 20, // lower ring
-        6, 10, 20,  6, 20, 14,
-        13, 6, 14,  13, 14, 21,
-        7, 13, 21,  7, 21, 16,
-        15, 7, 16,  15, 16, 22,
-        8, 15, 22,  8, 22, 17,
-        11, 8, 17,  11, 17, 19,
-        5, 11, 19,  5, 19, 12,
-        9, 14, 20,  9, 20, 12, // pyramid base
-        9, 16, 21,  9, 21, 14,
-        9, 17, 22,  9, 22, 16,
-        9, 12, 19,  9, 19, 17,
-      ]);
+      const triangle_indices = new Uint32Array(mesh.triangles);
       const base_triangles_count = 6;
       const subdiv_1_triangles_count = 32;
       console.assert(
@@ -389,17 +342,7 @@
       let vertices_write_ptr =
         base_vertex_positions.length / vertices_object_size;
 
-      // prettier-ignore
-      const base_edges = new Uint32Array([ /* FIG4 */
-             0, 5, 2, 6,
-              1, 5, 0, 8,
-              2, 5, 1, 9,
-             0, 6, 3, 7,
-              3, 6, 2, 9,
-              0, 7, 4, 8,
-              4, 7, 3, 9,
-              1, 8, 4, 9,
-            ]); //      const base_edges = new Uint32Array(mesh.edges);
+      const base_edges = new Uint32Array(mesh.edges);
       const edges_object_size = 4; // (two faces, two edges)
       const base_edges_count = base_edges.length / edges_object_size;
 

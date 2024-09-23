@@ -179,8 +179,8 @@ class SubdivMesh {
           console.log(`ERROR: edge ${edge} already in edgeToFace`);
         }
         edgeToFace.set(edge, f_points_ptr);
-        /* in a manifold mesh, each edge will be set twice, so it's
-        OK if it's already set; but if it sets here, it better set twice */
+        /**  in a manifold mesh, each edge will be set twice, so it's
+         *   OK if it's already set; but if it sets here, it better set twice */
         if (edgeToEdgeID.has(edge) ^ edgeToEdgeID.has(edgeRev)) {
           console.log(
             `Inconsistent edges in edgeToEdgeID: ${edge}, ${edgeRev}`
@@ -193,23 +193,32 @@ class SubdivMesh {
       }
     }
 
+    console.log(edgeToEdgeID);
     // all faces have been ingested, let's subdivide!
+    // XXX WRONG probably want to set v_base smarter than 0
     for (
-      let i = 0, face_offset = 0, f_points_ptr = this.level_base_ptr[level].f;
+      let v_base = 0, i = 0, f_points_ptr = this.level_base_ptr[level].f;
       i < facesIn.length;
-      i++, f_points_ptr++
+      v_base += facesIn[i].vertices.length, i++, f_points_ptr++
     ) {
       // to make nomenclature easier, let's have tiny functions v and e
       // they have to be arrow functions to inherit "this" from the surrounding scope
-      const v_base = 0; // THIS IS WRONG
       const v = (idx) => {
         return this.level_base_ptr[level].v + this.faces[v_base + idx];
       };
       const e = (v0, v1) => {
+        console.log(
+          `edgeToEdgeID(${v0}, ${v1}) => (${this.faces[v_base + v0]}, ${
+            this.faces[v_base + v1]
+          }) = ${edgeToEdgeID.get(
+            edgeToKey(this.faces[v_base + v0], this.faces[v_base + v1])
+          )}`
+        );
         return edgeToEdgeID.get(
           edgeToKey(this.faces[v_base + v0], this.faces[v_base + v1])
         );
       };
+      console.log("Face ", i);
       switch (facesIn[i].vertices.length) {
         case 3: // triangle
           // build quads and triangles!
@@ -221,8 +230,9 @@ class SubdivMesh {
           );
           // prettier-ignore
           this.triangles.push(
-            /* TODO: There is a right way to subdivide quads->tris */
-            /* need to compare both diagonals & pick the better one */
+            /** TODO: There is a right way to subdivide quads->tris
+             * need to compare both diagonals & pick the better one
+             * especially if this is concave */
             f_points_ptr, e(0, 2), v(0),
             f_points_ptr, v(0), e(0, 1),
             f_points_ptr, e(0, 1), v(1),
@@ -237,6 +247,7 @@ class SubdivMesh {
           //  }, ${this.faces[v_base + 2]}, ${this.faces[v_base + 3]}`
           // prettier-ignore
           this.faces.push( // four quads
+            /* TODO: Am I picking the right quads to subdivide? It's an octagon */
             f_points_ptr, v(0), e(0, 1), v(1),
             f_points_ptr, v(1), e(1, 2), v(2),
             f_points_ptr, v(2), e(2, 3), v(3),
@@ -244,8 +255,10 @@ class SubdivMesh {
           );
           // prettier-ignore
           this.triangles.push(
-            /* TODO: There is a right way to subdivide quads->tris */
-            /* need to compare both diagonals & pick the better one */
+            /** TODO: There is a right way to subdivide quads->tris
+             * need to compare both diagonals & pick the better one
+             * especially if this is concave */
+            /* TODO: Am I picking the right quads to subdivide? It's an octagon */
             f_points_ptr, v(0), e(0, 1),
             f_points_ptr, e(0, 1), v(1),
             f_points_ptr, v(1), e(1, 2),
@@ -263,22 +276,31 @@ class SubdivMesh {
           break;
       }
     }
+    console.log("this.faces: ", this.faces);
+    console.log("edgeToFace: ", edgeToFace);
+    console.log("edgeToEdgeID: ", edgeToEdgeID);
     // now we have a map (edgeToFace) full of {edge -> face}
-    // and a map (edgeToEdgeID) full of {edge -> edgeID}
-    edgeToFace.forEach((face, edge) => {
+    //   and a map (edgeToEdgeID) full of {edge -> edgeID}
+    // we iterate over edgeToEdgeID because its entry order
+    //   is the canonical order
+    edgeToEdgeID.forEach((edgeID, edge) => {
       const v = edge.split(",").map((n) => parseInt(n, 10));
       const reverseEdge = edgeToKey(v[1], v[0]);
-      if (!edgeToFace.has(reverseEdge)) {
+      if (
+        !edgeToFace.has(reverseEdge) ||
+        !edgeToFace.has(edge) ||
+        !edgeToEdgeID.has(reverseEdge)
+      ) {
         // if we have a manifold mesh, every edge has two faces, one
         //   in each direction of the edge
         // let's assert that
         console.log(
-          `ERROR: non-manifold surface, ${reverseEdge} not in edgeToFace`
+          `ERROR: non-manifold surface, ${edge} or ${reverseEdge} not in edgeToFace/edgeToEdgeID`
         );
       }
-      const f = [edgeToFace.get(reverseEdge), face];
+      const f = [edgeToFace.get(edge), edgeToFace.get(reverseEdge)];
       // push into edge array: v[0], f[0], v[1], f[1]
-      // order is arbitrary but edgeToEdgeID should take care of that
+      // iterating through edgeToEdgeID ensures a consistent order
       if (f[1] > f[0]) {
         // in Niessner, all edges have f[1] > f[0]
         this.edges.push(v[0], f[0], v[1], f[1]);
