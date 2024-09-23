@@ -49,10 +49,9 @@ class SubdivMesh {
     this.points_count = [];
     const vertex_size = 4; // # elements per vertex
     const initial_vertex_count = verticesIn.length;
-    this.level_count = [new Level(initial_vertex_count, 0, 0)];
+    this.level_count = [new Level(initial_vertex_count, 0)];
     this.level_base_ptr = [
       new Level(0, initial_vertex_count, initial_vertex_count),
-      new Level(initial_vertex_count, initial_vertex_count + facesIn.length),
     ];
     const level = 1; // will loop through levels later
     // OBJ stores faces in CCW order
@@ -76,13 +75,53 @@ class SubdivMesh {
       vertexNeighborsMap.set(i, []);
     }
 
-    this.level_count.push(new Level(facesIn.length));
+    /** calculating these offsets and lengths is a pain,
+     * because we really have to walk the entire input data
+     * structure just to get the counts
+     *
+     * also we will have different ways to do this between
+     * the initial read data structure from the file and
+     * our internal data structure
+     *
+     * one possibility will be to convert the .obj data
+     * structure to ours at the outset, and then have uniform
+     * handling as we loop
+     *
+     * another possibility is to have loops at the beginning
+     * of the level calculation that just compute all the
+     * counts/offsets
+     */
+    this.level_count.push(
+      new Level(
+        facesIn.length,
+        facesIn.length + initial_vertex_count - 2,
+        initial_vertex_count
+      )
+    );
+    this.level_base_ptr.push(
+      new Level(
+        initial_vertex_count,
+        initial_vertex_count + this.level_count[level].v,
+        initial_vertex_count +
+          this.level_count[level].v +
+          this.level_count[level].e
+      )
+    );
+
+    console.log("Counts:   ", this.level_count);
+    console.log("Base ptr: ", this.level_base_ptr);
 
     let edgePointID = this.level_base_ptr[1].e;
     // edgeToFace: [v_start,v_end] -> face on left
     const edgeToFace = new Map();
     // edgePointID: [v_start,v_end] -> edgePointID
     const edgeToEdgeID = new Map();
+
+    /* how many edges are there? Could compute in two ways:
+     * - Euler characteristic E = V + F - 2 (manifold only)
+     * - Walk through faces, count edges
+     */
+
     for (
       let i = 0, face_offset = 0, f_points_ptr = this.level_base_ptr[level].f;
       i < facesIn.length;
@@ -157,6 +196,9 @@ class SubdivMesh {
             ${f_points_ptr}, x, ${this.faces[v_base]}, y\n
             ${f_points_ptr}, x, ${this.faces[v_base + 1]}, y\n
             ${f_points_ptr}, x, ${this.faces[v_base + 2]}, y\n
+            Offsets: ${this.level_base_ptr[1].f}, ${
+              this.level_base_ptr[1].e
+            }, ${this.level_base_ptr[1].v}
             `
           );
           break;
