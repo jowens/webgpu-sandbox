@@ -1,18 +1,16 @@
-// const fileContents =
-//   "v 0 0 0 \n" + "v 0 1 0 \n" + "v 1 0 0 \n" + "f 1 2 3";
 const fileContents = `
-                                # square pyramid from Niessner et al. (2012)
-                                v 0 0 1
-                                v -1 1 0
-                                v -1 -1 0
-                                v 1 -1 0
-                                v 1 1 0
-                                f 1 2 3
-                                f 1 3 4
-                                f 1 4 5
-                                f 1 5 2
-                                f 5 4 3 2
-                                `;
+# square pyramid from Niessner et al. (2012)
+v 0 0 1
+v -1 1 0
+v -1 -1 0
+v 1 -1 0
+v 1 1 0
+f 1 2 3
+f 1 3 4
+f 1 4 5
+f 1 5 2
+f 5 4 3 2
+`;
 // 2 = V - E + F = 5 - 8 + 5
 
 const objFile = new OBJFile(fileContents);
@@ -141,7 +139,6 @@ class SubdivMesh {
         // file, here's where we'd record them
         this.faces.push(facesIn[i].vertices[j].vertexIndex - 1);
       }
-      console.log("this.faces after push: ", this.faces);
       switch (facesIn[i].vertices.length) {
         case 3: // face is a triangle
           this.triangles.push(
@@ -194,26 +191,25 @@ class SubdivMesh {
           edgePointID++;
         }
       }
+    }
+
+    // all faces have been ingested, let's subdivide!
+    for (
+      let i = 0, face_offset = 0, f_points_ptr = this.level_base_ptr[level].f;
+      i < facesIn.length;
+      i++, f_points_ptr++
+    ) {
       // to make nomenclature easier, let's have tiny functions v and e
       // they have to be arrow functions to inherit "this" from the surrounding scope
+      const v_base = 0; // THIS IS WRONG
       const v = (idx) => {
         return this.level_base_ptr[level].v + this.faces[v_base + idx];
       };
       const e = (v0, v1) => {
-        console.log("this.faces: ", this.faces);
-        console.log("v_base: ", v_base);
-        console.log("e(): ", v0, v1);
-        console.log("edgeToEdgeID: ", edgeToEdgeID);
-        console.log(
-          "eTK: ",
-          edgeToKey(this.faces[v_base + v0], this.faces[v_base + v1])
-        );
         return edgeToEdgeID.get(
           edgeToKey(this.faces[v_base + v0], this.faces[v_base + v1])
         );
       };
-
-      console.log("this.faces before build: ", this.faces);
       switch (facesIn[i].vertices.length) {
         case 3: // triangle
           // build quads and triangles!
@@ -225,6 +221,8 @@ class SubdivMesh {
           );
           // prettier-ignore
           this.triangles.push(
+            /* TODO: There is a right way to subdivide quads->tris */
+            /* need to compare both diagonals & pick the better one */
             f_points_ptr, e(0, 2), v(0),
             f_points_ptr, v(0), e(0, 1),
             f_points_ptr, e(0, 1), v(1),
@@ -234,10 +232,28 @@ class SubdivMesh {
           );
           break;
         case 4: // quad
-          console.log(
-            `Subdividing quad with vertices ${this.faces[v_base]}, ${
-              this.faces[v_base + 1]
-            }, ${this.faces[v_base + 2]}, ${this.faces[v_base + 3]}`
+          //  `Subdividing quad with vertices ${this.faces[v_base]}, ${
+          //    this.faces[v_base + 1]
+          //  }, ${this.faces[v_base + 2]}, ${this.faces[v_base + 3]}`
+          // prettier-ignore
+          this.faces.push( // four quads
+            f_points_ptr, v(0), e(0, 1), v(1),
+            f_points_ptr, v(1), e(1, 2), v(2),
+            f_points_ptr, v(2), e(2, 3), v(3),
+            f_points_ptr, v(3), e(3, 0), v(0),
+          );
+          // prettier-ignore
+          this.triangles.push(
+            /* TODO: There is a right way to subdivide quads->tris */
+            /* need to compare both diagonals & pick the better one */
+            f_points_ptr, v(0), e(0, 1),
+            f_points_ptr, e(0, 1), v(1),
+            f_points_ptr, v(1), e(1, 2),
+            f_points_ptr, e(1, 2), v(2),
+            f_points_ptr, v(2), e(2, 3),
+            f_points_ptr, e(2, 3), v(3),
+            f_points_ptr, v(3), e(3, 0),
+            f_points_ptr, e(3, 0), v(0),
           );
           break;
         default:
