@@ -141,6 +141,7 @@ class SubdivMesh {
         // file, here's where we'd record them
         this.faces.push(facesIn[i].vertices[j].vertexIndex - 1);
       }
+      console.log("this.faces after push: ", this.faces);
       switch (facesIn[i].vertices.length) {
         case 3: // face is a triangle
           this.triangles.push(
@@ -193,89 +194,43 @@ class SubdivMesh {
           edgePointID++;
         }
       }
-      // to make nomenclature easier, let's have tiny functions
-      const v = [this.level_base_ptr[level].v + this.faces[v_base]];
-      const e02 = edgeToEdgeID.get(
-        edgeToKey(this.faces[v_base], this.faces[v_base + 2])
-      );
+      // to make nomenclature easier, let's have tiny functions v and e
+      // they have to be arrow functions to inherit "this" from the surrounding scope
+      const v = (idx) => {
+        return this.level_base_ptr[level].v + this.faces[v_base + idx];
+      };
+      const e = (v0, v1) => {
+        console.log("this.faces: ", this.faces);
+        console.log("v_base: ", v_base);
+        console.log("e(): ", v0, v1);
+        console.log("edgeToEdgeID: ", edgeToEdgeID);
+        console.log(
+          "eTK: ",
+          edgeToKey(this.faces[v_base + v0], this.faces[v_base + v1])
+        );
+        return edgeToEdgeID.get(
+          edgeToKey(this.faces[v_base + v0], this.faces[v_base + v1])
+        );
+      };
 
+      console.log("this.faces before build: ", this.faces);
       switch (facesIn[i].vertices.length) {
         case 3: // triangle
-          console.log(
-            `Subdividing tri with vertices ${this.faces[v_base]}, ${
-              this.faces[v_base + 1]
-            }, ${this.faces[v_base + 2]}\n
-            Face point = ${f_points_ptr}\n
-            Edge ${this.faces[v_base]}->${
-              this.faces[v_base + 1]
-            } is ${edgeToEdgeID.get(
-              edgeToKey(this.faces[v_base], this.faces[v_base + 1])
-            )}\n
-            Edge ${this.faces[v_base + 1]}->${
-              this.faces[v_base + 2]
-            } is ${edgeToEdgeID.get(
-              edgeToKey(this.faces[v_base + 1], this.faces[v_base + 2])
-            )}\n
-            Edge ${this.faces[v_base + 2]}->${
-              this.faces[v_base]
-            } is ${edgeToEdgeID.get(
-              edgeToKey(this.faces[v_base + 2], this.faces[v_base])
-            )}\n
-            Output quads:\n
-            v${this.faces[v_base]}: ${f_points_ptr}, ${edgeToEdgeID.get(
-              edgeToKey(this.faces[v_base], this.faces[v_base + 2])
-            )}, ${
-              this.level_base_ptr[level].v + this.faces[v_base]
-            }, ${edgeToEdgeID.get(
-              edgeToKey(this.faces[v_base], this.faces[v_base + 1])
-            )}\n
-            v${this.faces[v_base + 1]}: ${f_points_ptr}, ${edgeToEdgeID.get(
-              edgeToKey(this.faces[v_base], this.faces[v_base + 1])
-            )}, ${
-              this.level_base_ptr[level].v + this.faces[v_base + 1]
-            }, ${edgeToEdgeID.get(
-              edgeToKey(this.faces[v_base + 1], this.faces[v_base + 2])
-            )}\n
-            v${this.faces[v_base + 2]}: ${f_points_ptr}, ${edgeToEdgeID.get(
-              edgeToKey(this.faces[v_base + 1], this.faces[v_base + 2])
-            )}, ${
-              this.level_base_ptr[level].v + this.faces[v_base + 2]
-            }, ${edgeToEdgeID.get(
-              edgeToKey(this.faces[v_base], this.faces[v_base + 2])
-            )}\n
-            Offsets: ${this.level_base_ptr[1].f}, ${
-              this.level_base_ptr[1].e
-            }, ${this.level_base_ptr[1].v}
-            `
+          // build quads and triangles!
+          // prettier-ignore
+          this.faces.push( // three quads
+            f_points_ptr, e(0, 2), v(0), e(0, 1),
+            f_points_ptr, e(0, 1), v(1), e(1, 2),
+            f_points_ptr, e(1, 2), v(2), e(0, 2)
           );
-
-          // push those quads!
-          this.faces.push(
-            // quad 0
-            f_points_ptr,
-            e02,
-            v0,
-            edgeToEdgeID.get(
-              edgeToKey(this.faces[v_base], this.faces[v_base + 1])
-            ),
-            // quad 1
-            f_points_ptr,
-            edgeToEdgeID.get(
-              edgeToKey(this.faces[v_base], this.faces[v_base + 1])
-            ),
-            this.level_base_ptr[level].v + this.faces[v_base + 1],
-            edgeToEdgeID.get(
-              edgeToKey(this.faces[v_base + 1], this.faces[v_base + 2])
-            ),
-            // quad 2
-            f_points_ptr,
-            edgeToEdgeID.get(
-              edgeToKey(this.faces[v_base + 1], this.faces[v_base + 2])
-            ),
-            this.level_base_ptr[level].v + this.faces[v_base + 2],
-            edgeToEdgeID.get(
-              edgeToKey(this.faces[v_base], this.faces[v_base + 2])
-            )
+          // prettier-ignore
+          this.triangles.push(
+            f_points_ptr, e(0, 2), v(0),
+            f_points_ptr, v(0), e(0, 1),
+            f_points_ptr, e(0, 1), v(1),
+            f_points_ptr, v(1), e(1, 2),
+            f_points_ptr, e(1, 2), v(2),
+            f_points_ptr, v(2), e(0, 2),
           );
           break;
         case 4: // quad
