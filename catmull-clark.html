@@ -200,7 +200,14 @@
         timestep: 1.0,
       });
 
+      const models = {
+        model: "pyramid",
+      };
+
       const pane = new Pane();
+      pane.addBinding(models, "model", {
+        options: { pyramid: "pyramid", teapot: "teapot" },
+      });
       pane.addBinding(uni.views.ROTATE_CAMERA_SPEED, 0, {
         min: 0,
         max: 1,
@@ -384,7 +391,6 @@
               4, 7, 3, 9,
               1, 8, 4, 9,
             ]); //      const base_edges = new Uint32Array(mesh.edges);
-      console.log(base_edges);
       const edges_object_size = 4; // (two faces, two edges)
       const base_edges_count = base_edges.length / edges_object_size;
 
