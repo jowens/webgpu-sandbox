@@ -204,9 +204,16 @@
         model: "pyramid",
       };
 
+      const model_urls = {
+        pyramid:
+          "https://gist.githubusercontent.com/jowens/fb3a19db8f4c6271cd9b730b77f7d210/raw/311e98007d600dd10a3425be8312139dc442ca5d/square-pyramid.obj",
+        teapot_low:
+          "https://graphics.cs.utah.edu/courses/cs6620/fall2013/prj05/teapot-low.obj",
+      };
+
       const pane = new Pane();
       pane.addBinding(models, "model", {
-        options: { pyramid: "pyramid", teapot: "teapot" },
+        options: { pyramid: "pyramid", teapot_low: "teapot_low" },
       });
       pane.addBinding(uni.views.ROTATE_CAMERA_SPEED, 0, {
         min: 0,
