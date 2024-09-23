@@ -36,6 +36,8 @@ class Level {
 
 class SubdivMesh {
   constructor(verticesIn, facesIn) {
+    /* everything prefixed with "this." is a data structure that will go to the GPU */
+    /* everything else is internal-only and will not be externally visible */
     this.vertices = []; // why can't I do new Float32Array?
     this.faces = []; // indexed per vertex
     this.triangles = [];
@@ -46,7 +48,6 @@ class SubdivMesh {
     this.vertex_offset = [];
     this.vertex_valence = [];
     this.vertex_index = [];
-    this.points_count = [];
     const vertex_size = 4; // # elements per vertex
     const initial_vertex_count = verticesIn.length;
     this.level_count = [new Level(0, 0, initial_vertex_count)];
@@ -140,6 +141,30 @@ class SubdivMesh {
         // file, here's where we'd record them
         this.faces.push(facesIn[i].vertices[j].vertexIndex - 1);
       }
+      switch (facesIn[i].vertices.length) {
+        case 3: // face is a triangle
+          this.triangles.push(
+            this.faces.at(-3),
+            this.faces.at(-2),
+            this.faces.at(-1)
+          );
+          break;
+        case 4: // face is a quad
+          this.triangles.push(
+            this.faces.at(-4),
+            this.faces.at(-3),
+            this.faces.at(-2),
+            this.faces.at(-4),
+            this.faces.at(-2),
+            this.faces.at(-1)
+          );
+          break;
+        default:
+          console.log(
+            `Error: Face ${i} has valence ${facesIn[i].vertices.length}, can only support 3 and 4 currently`
+          );
+          break;
+      }
       // same loop through vertices in this face,
       // but record edges this time
       const v_base = thisFacePtr;
@@ -168,6 +193,12 @@ class SubdivMesh {
           edgePointID++;
         }
       }
+      // to make nomenclature easier, let's have tiny functions
+      const v = [this.level_base_ptr[level].v + this.faces[v_base]];
+      const e02 = edgeToEdgeID.get(
+        edgeToKey(this.faces[v_base], this.faces[v_base + 2])
+      );
+
       switch (facesIn[i].vertices.length) {
         case 3: // triangle
           console.log(
@@ -216,6 +247,35 @@ class SubdivMesh {
               this.level_base_ptr[1].e
             }, ${this.level_base_ptr[1].v}
             `
+          );
+
+          // push those quads!
+          this.faces.push(
+            // quad 0
+            f_points_ptr,
+            e02,
+            v0,
+            edgeToEdgeID.get(
+              edgeToKey(this.faces[v_base], this.faces[v_base + 1])
+            ),
+            // quad 1
+            f_points_ptr,
+            edgeToEdgeID.get(
+              edgeToKey(this.faces[v_base], this.faces[v_base + 1])
+            ),
+            this.level_base_ptr[level].v + this.faces[v_base + 1],
+            edgeToEdgeID.get(
+              edgeToKey(this.faces[v_base + 1], this.faces[v_base + 2])
+            ),
+            // quad 2
+            f_points_ptr,
+            edgeToEdgeID.get(
+              edgeToKey(this.faces[v_base + 1], this.faces[v_base + 2])
+            ),
+            this.level_base_ptr[level].v + this.faces[v_base + 2],
+            edgeToEdgeID.get(
+              edgeToKey(this.faces[v_base], this.faces[v_base + 2])
+            )
           );
           break;
         case 4: // quad
