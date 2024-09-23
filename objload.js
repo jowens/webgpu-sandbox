@@ -49,10 +49,8 @@ class SubdivMesh {
     this.points_count = [];
     const vertex_size = 4; // # elements per vertex
     const initial_vertex_count = verticesIn.length;
-    this.level_count = [new Level(initial_vertex_count, 0)];
-    this.level_base_ptr = [
-      new Level(0, initial_vertex_count, initial_vertex_count),
-    ];
+    this.level_count = [new Level(0, 0, initial_vertex_count)];
+    this.level_base_ptr = [new Level(0, 0, 0)];
     const level = 1; // will loop through levels later
     // OBJ stores faces in CCW order
     // The OBJ (or .OBJ) file format stores vertices in a counterclockwise order by default. This means that if the vertices are ordered counterclockwise around a face, both the face and the normal will point toward the viewer. If the vertices are ordered clockwise, both will point away from the viewer.
@@ -193,9 +191,27 @@ class SubdivMesh {
               edgeToKey(this.faces[v_base + 2], this.faces[v_base])
             )}\n
             Output quads:\n
-            ${f_points_ptr}, x, ${this.faces[v_base]}, y\n
-            ${f_points_ptr}, x, ${this.faces[v_base + 1]}, y\n
-            ${f_points_ptr}, x, ${this.faces[v_base + 2]}, y\n
+            v${this.faces[v_base]}: ${f_points_ptr}, ${edgeToEdgeID.get(
+              edgeToKey(this.faces[v_base], this.faces[v_base + 2])
+            )}, ${
+              this.level_base_ptr[level].v + this.faces[v_base]
+            }, ${edgeToEdgeID.get(
+              edgeToKey(this.faces[v_base], this.faces[v_base + 1])
+            )}\n
+            v${this.faces[v_base + 1]}: ${f_points_ptr}, ${edgeToEdgeID.get(
+              edgeToKey(this.faces[v_base], this.faces[v_base + 1])
+            )}, ${
+              this.level_base_ptr[level].v + this.faces[v_base + 1]
+            }, ${edgeToEdgeID.get(
+              edgeToKey(this.faces[v_base + 1], this.faces[v_base + 2])
+            )}\n
+            v${this.faces[v_base + 2]}: ${f_points_ptr}, ${edgeToEdgeID.get(
+              edgeToKey(this.faces[v_base + 1], this.faces[v_base + 2])
+            )}, ${
+              this.level_base_ptr[level].v + this.faces[v_base + 2]
+            }, ${edgeToEdgeID.get(
+              edgeToKey(this.faces[v_base], this.faces[v_base + 2])
+            )}\n
             Offsets: ${this.level_base_ptr[1].f}, ${
               this.level_base_ptr[1].e
             }, ${this.level_base_ptr[1].v}
