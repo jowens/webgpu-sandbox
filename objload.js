@@ -48,6 +48,8 @@ class SubdivMesh {
     const initial_vertex_count = verticesIn.length;
     this.level_count = [new Level(0, 0, initial_vertex_count, 0)];
     this.level_base_ptr = [new Level(0, 0, 0, -1)];
+    this.scale_input = true;
+    this.largest = 0;
     const level = 1; // will loop through levels later
     // OBJ stores faces in CCW order
     // The OBJ (or .OBJ) file format stores vertices in a counterclockwise order by default. This means that if the vertices are ordered counterclockwise around a face, both the face and the normal will point toward the viewer. If the vertices are ordered clockwise, both will point away from the viewer.
@@ -67,7 +69,22 @@ class SubdivMesh {
         verticesIn[i].z,
         1.0
       );
+      this.largest = Math.abs(
+        Math.max(
+          Math.abs(verticesIn[i].x),
+          Math.abs(verticesIn[i].y),
+          Math.abs(verticesIn[i].z),
+          this.largest
+        )
+      );
       vertexNeighborsMap.set(i, []);
+    }
+    if (this.scale_input) {
+      for (let i = 0; i < this.level_count[0].v; i++) {
+        this.vertices[i * vertex_size + 0] /= this.largest;
+        this.vertices[i * vertex_size + 1] /= this.largest;
+        this.vertices[i * vertex_size + 2] /= this.largest;
+      }
     }
 
     /** calculating these offsets and lengths is a pain,
