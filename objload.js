@@ -159,7 +159,7 @@ class SubdivMesh {
           break;
         default:
           console.log(
-            `Error: Face ${i} has valence ${facesIn[i].vertices.length}, can only support 3 and 4 currently`
+            `ERROR: Face ${i} has valence ${facesIn[i].vertices.length}, can only support 3 and 4 currently`
           );
           break;
       }
@@ -183,7 +183,7 @@ class SubdivMesh {
          *   OK if it's already set; but if it sets here, it better set twice */
         if (edgeToEdgeID.has(edge) ^ edgeToEdgeID.has(edgeRev)) {
           console.log(
-            `Inconsistent edges in edgeToEdgeID: ${edge}, ${edgeRev}`
+            `ERROR: Inconsistent edges in edgeToEdgeID: ${edge}, ${edgeRev}`
           );
         } else if (!edgeToEdgeID.has(edge)) {
           edgeToEdgeID.set(edge, edgePointID);
@@ -193,7 +193,6 @@ class SubdivMesh {
       }
     }
 
-    console.log(edgeToEdgeID);
     // all faces have been ingested, let's subdivide!
     // XXX WRONG probably want to set v_base smarter than 0
     for (
@@ -207,18 +206,10 @@ class SubdivMesh {
         return this.level_base_ptr[level].v + this.faces[v_base + idx];
       };
       const e = (v0, v1) => {
-        console.log(
-          `edgeToEdgeID(${v0}, ${v1}) => (${this.faces[v_base + v0]}, ${
-            this.faces[v_base + v1]
-          }) = ${edgeToEdgeID.get(
-            edgeToKey(this.faces[v_base + v0], this.faces[v_base + v1])
-          )}`
-        );
         return edgeToEdgeID.get(
           edgeToKey(this.faces[v_base + v0], this.faces[v_base + v1])
         );
       };
-      console.log("Face ", i);
       switch (facesIn[i].vertices.length) {
         case 3: // triangle
           // build quads and triangles!
@@ -276,9 +267,6 @@ class SubdivMesh {
           break;
       }
     }
-    console.log("this.faces: ", this.faces);
-    console.log("edgeToFace: ", edgeToFace);
-    console.log("edgeToEdgeID: ", edgeToEdgeID);
     // now we have a map (edgeToFace) full of {edge -> face}
     //   and a map (edgeToEdgeID) full of {edge -> edgeID}
     // we iterate over edgeToEdgeID because its entry order
