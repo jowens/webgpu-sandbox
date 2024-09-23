@@ -22,13 +22,11 @@ function edgeToKey(e1, e2) {
 
 // generic class to encapsulate counts/offsets per level
 class Level {
-  f = -1;
-  e = -1;
-  v = -1;
-  constructor(f, e, v) {
+  constructor(f, e, v, t) {
     this.f = f;
     this.e = e;
     this.v = v;
+    this.t = t;
   }
 }
 
@@ -48,8 +46,8 @@ class SubdivMesh {
     this.vertex_index = [];
     const vertex_size = 4; // # elements per vertex
     const initial_vertex_count = verticesIn.length;
-    this.level_count = [new Level(0, 0, initial_vertex_count)];
-    this.level_base_ptr = [new Level(0, 0, 0)];
+    this.level_count = [new Level(0, 0, initial_vertex_count, 0)];
+    this.level_base_ptr = [new Level(0, 0, 0, -1)];
     const level = 1; // will loop through levels later
     // OBJ stores faces in CCW order
     // The OBJ (or .OBJ) file format stores vertices in a counterclockwise order by default. This means that if the vertices are ordered counterclockwise around a face, both the face and the normal will point toward the viewer. If the vertices are ordered clockwise, both will point away from the viewer.
@@ -92,7 +90,8 @@ class SubdivMesh {
       new Level(
         facesIn.length,
         facesIn.length + initial_vertex_count - 2,
-        initial_vertex_count
+        initial_vertex_count,
+        0
       )
     );
     this.level_base_ptr.push(
@@ -101,7 +100,8 @@ class SubdivMesh {
         initial_vertex_count + this.level_count[level].v,
         initial_vertex_count +
           this.level_count[level].v +
-          this.level_count[level].e
+          this.level_count[level].e,
+        -1
       )
     );
 
@@ -146,6 +146,7 @@ class SubdivMesh {
             this.faces.at(-2),
             this.faces.at(-1)
           );
+          this.level_count[0].t += 1;
           break;
         case 4: // face is a quad
           this.triangles.push(
@@ -156,6 +157,7 @@ class SubdivMesh {
             this.faces.at(-2),
             this.faces.at(-1)
           );
+          this.level_count[0].t += 2;
           break;
         default:
           console.log(
@@ -231,6 +233,7 @@ class SubdivMesh {
             f_points_ptr, e(1, 2), v(2),
             f_points_ptr, v(2), e(0, 2),
           );
+          this.level_count[level].t += 6;
           break;
         case 4: // quad
           //  `Subdividing quad with vertices ${this.faces[v_base]}, ${
@@ -259,6 +262,7 @@ class SubdivMesh {
             f_points_ptr, v(3), e(3, 0),
             f_points_ptr, e(3, 0), v(0),
           );
+          this.level_count[level].t += 8;
           break;
         default:
           console.log(

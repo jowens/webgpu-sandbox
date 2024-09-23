@@ -325,8 +325,8 @@
       //   base_faces plus base_face_valence
       // prettier-ignore
       const triangle_indices = new Uint32Array(mesh.triangles);
-      const base_triangles_count = 6;
-      const subdiv_1_triangles_count = 32;
+      const base_triangles_count = mesh.level_count[0].t;
+      const subdiv_1_triangles_count = mesh.level_count[1].t;
       console.assert(
         triangle_indices.length / 3 ==
           base_triangles_count + subdiv_1_triangles_count,
