@@ -49,7 +49,7 @@ class SubdivMesh {
     this.level_count = [new Level(0, 0, initial_vertex_count, 0)];
     this.level_base_ptr = [new Level(0, 0, 0, -1)];
     this.scale_input = true;
-    this.largest = 0;
+    this.largest_input = 0.0;
     const level = 1; // will loop through levels later
     // OBJ stores faces in CCW order
     // The OBJ (or .OBJ) file format stores vertices in a counterclockwise order by default. This means that if the vertices are ordered counterclockwise around a face, both the face and the normal will point toward the viewer. If the vertices are ordered clockwise, both will point away from the viewer.
@@ -69,23 +69,25 @@ class SubdivMesh {
         verticesIn[i].z,
         1.0
       );
-      this.largest = Math.abs(
+      this.largest_input = Math.abs(
         Math.max(
           Math.abs(verticesIn[i].x),
           Math.abs(verticesIn[i].y),
           Math.abs(verticesIn[i].z),
-          this.largest
+          this.largest_input
         )
       );
       vertexNeighborsMap.set(i, []);
     }
     if (this.scale_input) {
       for (let i = 0; i < this.level_count[0].v; i++) {
-        this.vertices[i * vertex_size + 0] /= this.largest;
-        this.vertices[i * vertex_size + 1] /= this.largest;
-        this.vertices[i * vertex_size + 2] /= this.largest;
+        this.vertices[i * vertex_size + 0] /= this.largest_input;
+        this.vertices[i * vertex_size + 1] /= this.largest_input;
+        this.vertices[i * vertex_size + 2] /= this.largest_input;
       }
     }
+    /* cleanup, get rid of negative zeroes */
+    this.vertices = this.vertices.map((num) => (num == -0 ? 0 : num));
 
     /** calculating these offsets and lengths is a pain,
      * because we really have to walk the entire input data
@@ -303,9 +305,16 @@ class SubdivMesh {
         // if we have a manifold mesh, every edge has two faces, one
         //   in each direction of the edge
         // let's assert that
-        console.log(
-          `ERROR: non-manifold surface, ${edge} or ${reverseEdge} not in edgeToFace/edgeToEdgeID`
-        );
+        console.log("ERROR: non-manifold surface");
+        if (!edgeToFace.has(edge)) {
+          console.log("  ", edge, " not in edgeToFace (edge)");
+        }
+        if (!edgeToFace.has(reverseEdge)) {
+          console.log("  ", reverseEdge, " not in edgeToFace (reverseEdge)");
+        }
+        if (!edgeToEdgeID.has(reverseEdge)) {
+          console.log("  ", reverseEdge, " not in edgeToEdgeID (reverseEdge)");
+        }
       }
       const f = [edgeToFace.get(edge), edgeToFace.get(reverseEdge)];
       // push into edge array: v[0], f[0], v[1], f[1]
