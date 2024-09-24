@@ -193,7 +193,7 @@
       uni.set({
         ROTATE_CAMERA_SPEED: 0.006, // how quickly camera rotates
         TOGGLE_DURATION: 400.0, // number of timesteps between model toggle
-        WIGGLE_MAGNITUDE: 0.025, // how much vertices are perturbed
+        WIGGLE_MAGNITUDE: 0, //0.001, //0.025, // how much vertices are perturbed
         WIGGLE_SPEED: 0.05, // how quickly perturbations occur
         subdiv_level: 0,
         time: 0.0,
@@ -288,7 +288,9 @@
         "https://gist.githubusercontent.com/jowens/3557d7ac2fedc74c6fbf003c01e292c0/raw/3cc40343da499f4650e6ca263a91b00a106d9bc7/stanford-teapot.obj";
       const objurl5 = "http://localhost:8000/teddy.obj";
       const objurl6 = "http://localhost:8000/square-pyramid.obj";
-      const mesh = await urlToMesh(objurl5);
+      const objurl7 = "http://localhost:8000/al.obj";
+      const objurl8 = "http://localhost:8000/diamond-jdo.obj";
+      const mesh = await urlToMesh(objurl2);
       console.log(mesh);
 
       const vertices_size = mesh.level_base_ptr[1].v + mesh.level_count[1].v;
@@ -301,23 +303,10 @@
         vertices_size * normals_object_size
       );
 
-      /* Below are the data structures used to represent subdivision tables.
-       * These should be computed at compile time. Most are specified by Niessner
-       * in his paper (Figure 4) and those are indicated by FIG4 below.
-       */
-
-      // prettier-ignore
-      const base_vertex_positions = new Float32Array([
-        0, 0, 1, 1,   // vertex 0
-        -1, 1, 0, 1,  // vertex 1
-        -1, -1, 0, 1, // vertex 2
-        1, -1, 0, 1,  // vertex 3
-        1, 1, 0, 1,   // vertex 4
-      ]); // use this ONLY to populate (part of) the vertex buffer
-      for (let i = 0; i < base_vertex_positions.length; i++) {
+      /* populate vertices from mesh data structure */
+      for (let i = 0; i < mesh.level_count[0].v * vertices_object_size; i++) {
         vertices[i] = mesh.vertices[i];
       }
-      // never use base_vertex_positions again
 
       // Q: Is a flattened 1D array the right way to represent base faces?
       // should it instead be a 2D array, [face][vertex]?
@@ -346,8 +335,7 @@
       // TODO: compute that scan in a compute shader
       const base_face_offset = new Uint32Array(mesh.face_offset);
       const base_faces_count = base_face_valence.length;
-      let vertices_write_ptr =
-        base_vertex_positions.length / vertices_object_size;
+      let vertices_write_ptr = mesh.level_base_ptr[1].f;
 
       const base_edges = new Uint32Array(mesh.edges);
       const edges_object_size = 4; // (two faces, two edges)
@@ -370,7 +358,7 @@
                     @compute @workgroup_size(${WORKGROUP_SIZE}) fn perturbInputVerticesKernel(
                              @builtin(global_invocation_id) id: vec3u) {
                       let i = id.x;
-                      if (i < arrayLength(&vertices)) {
+                      if (i < ${mesh.level_count[0].v}) {
                         let t = myUniforms.time * myUniforms.WIGGLE_SPEED;
                         let stepsize = myUniforms.WIGGLE_MAGNITUDE;
                         let angle_start = f32(i);
@@ -398,10 +386,10 @@
        * parallel for i in [0 .. base_face_valence.length]:
        *   new_faces[i] = [0,0,0]
        *   for j in [base_face_offset[i] .. base_face_offset[i] + base_face_valence[i]]:
-       *     new_faces[i] += base_vertex_positions[base_faces[j]
+       *     new_faces[i] += vertices[base_faces[j]
        *   new_faces[i] /= base_face_valence[i]
        */
-
+      console.log("face pts write_ptr: ", mesh.level_base_ptr[1].f);
       const face_points_module = device.createShaderModule({
         label: "face points module",
         code: /* wgsl */ `
@@ -426,10 +414,10 @@
                     @compute @workgroup_size(${WORKGROUP_SIZE}) fn facePointsKernel(
                       @builtin(global_invocation_id) id: vec3u) {
                       let i = id.x;
-                      if (i < arrayLength(&base_face_offset)) {
+                      if (i < ${mesh.level_count[1].f}) {
                         /* TODO: exit if my index is larger than the size of the input */
 
-                        let out = i + ${vertices_write_ptr};
+                        let out = i + ${mesh.level_base_ptr[1].f};
                         vertices[out] = vec3f(0,0,0);
                         for (var j: u32 = base_face_offset[i]; j < base_face_offset[i] + base_face_valence[i]; j++) {
                           let face_vertex = base_faces[j];
@@ -461,6 +449,7 @@
        *                           vertices[edge_id + 2] + vertices[edge_id + 3])
        */
 
+      console.log("edge pts write_ptr: ", mesh.level_base_ptr[1].e);
       const edge_points_module = device.createShaderModule({
         label: "edge points module",
         code: /* wgsl */ `
@@ -478,8 +467,8 @@
                     @compute @workgroup_size(${WORKGROUP_SIZE}) fn edge_points_kernel(
                       @builtin(global_invocation_id) id: vec3u) {
                         let i = id.x;
-                        if (i < arrayLength(&base_edges)) {
-                          let out = i + ${vertices_write_ptr};
+                        if (i < ${mesh.level_count[1].e}) {
+                          let out = i + ${mesh.level_base_ptr[1].e};
                           let edge_id = i;
                           vertices[out] = vec3f(0,0,0);
                           for (var j: u32 = 0; j < 4; j++) {
@@ -531,6 +520,7 @@
        *   new_vertex[i] /= base_vertex_valence[i]
        */
 
+      console.log("vertex pts write_ptr: ", mesh.level_base_ptr[1].v);
       const vertex_points_module = device.createShaderModule({
         label: "vertex points module",
         code: /* wgsl */ `
@@ -551,8 +541,8 @@
                     @compute @workgroup_size(${WORKGROUP_SIZE}) fn vertex_points_kernel(
                       @builtin(global_invocation_id) id: vec3u) {
                         let i = id.x;
-                        if (i < arrayLength(&base_vertex_offset)) {
-                          let out = i + ${vertices_write_ptr};
+                        if (i < ${mesh.level_count[1].v}) {
+                          let out = i + ${mesh.level_base_ptr[1].v};
                           let valence = base_vertex_valence[i];
                           vertices[out] = vec3f(0,0,0);
                           for (var j: u32 = base_vertex_offset[i]; j < base_vertex_offset[i] + 2 * base_vertex_valence[i]; j++) {
@@ -1054,7 +1044,7 @@
         perturb_pass.setPipeline(perturb_pipeline);
         perturb_pass.setBindGroup(0, perturb_bind_group);
         perturb_pass.dispatchWorkgroups(
-          Math.ceil(base_vertex_positions.length / WORKGROUP_SIZE)
+          Math.ceil(mesh.level_count[0].v / WORKGROUP_SIZE)
         );
         perturb_pass.end();
 
@@ -1064,7 +1054,7 @@
         face_pass.setPipeline(face_pipeline);
         face_pass.setBindGroup(0, face_bind_group);
         face_pass.dispatchWorkgroups(
-          Math.ceil(base_faces_count / WORKGROUP_SIZE)
+          Math.ceil(mesh.level_count[1].f / WORKGROUP_SIZE)
         );
         face_pass.end();
 
@@ -1074,7 +1064,7 @@
         edge_pass.setPipeline(edge_pipeline);
         edge_pass.setBindGroup(0, edge_bind_group);
         edge_pass.dispatchWorkgroups(
-          Math.ceil(base_edges_count / WORKGROUP_SIZE)
+          Math.ceil(mesh.level_count[1].e / WORKGROUP_SIZE)
         );
         edge_pass.end();
 
@@ -1084,7 +1074,7 @@
         vertex_pass.setPipeline(vertex_pipeline);
         vertex_pass.setBindGroup(0, vertex_bind_group);
         vertex_pass.dispatchWorkgroups(
-          Math.ceil(base_vertex_count / WORKGROUP_SIZE)
+          Math.ceil(mesh.level_count[1].v / WORKGROUP_SIZE)
         );
         vertex_pass.end();
 
@@ -1095,7 +1085,7 @@
         facet_normals_pass.setBindGroup(0, facet_normals_bind_group);
         facet_normals_pass.dispatchWorkgroups(
           Math.ceil(
-            base_triangles_count + subdiv_1_triangles_count / WORKGROUP_SIZE
+            (base_triangles_count + subdiv_1_triangles_count) / WORKGROUP_SIZE
           )
         );
         facet_normals_pass.end();
@@ -1208,7 +1198,7 @@
           // console.log("timing helper result", res);
         });
 
-        //// console.log("vertex buffer", vertices_result);
+        /// console.log("vertex buffer", vertices_result);
         //// console.log("facet normals buffer", facet_normals_result);
         //// console.log("vertex normals buffer", vertex_normals_result);
         // console.log("time", uni.views.time[0]);
