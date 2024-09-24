@@ -134,9 +134,9 @@
       type="text/javascript"
       src="./webgpufundamentals-timing.js"
     ></script>
-    // parses file
+    <!-- parses file -->
     <script type="text/javascript" src="./OBJFile.js"></script>
-    // builds data structure
+    <!-- builds data structure -->
     <script type="text/javascript" src="./objload.js"></script>
     <script type="module">
       // inspiration: https://webgpufundamentals.org/webgpu/lessons/webgpu-fundamentals.html
@@ -273,10 +273,6 @@
        * The output of this phase depends only on the topology of the base mesh,
        * crease edges, and hierarchical detail; it is independent of the geometric
        * location of the control points." */
-
-      /** Initial test is a 5-face rectangular pyramid, which has 23 resulting elements
-       * after a single subdivision. Only the first 5 points must be populated in
-       * the vertices buffer. */
 
       const objurl1 =
         "https://gist.githubusercontent.com/jowens/fb3a19db8f4c6271cd9b730b77f7d210/raw/311e98007d600dd10a3425be8312139dc442ca5d/square-pyramid.obj";
