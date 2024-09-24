@@ -278,12 +278,17 @@
        * after a single subdivision. Only the first 5 points must be populated in
        * the vertices buffer. */
 
-      // const objurl = "http://localhost:8000/square-pyramid.obj";
       const objurl1 =
         "https://gist.githubusercontent.com/jowens/fb3a19db8f4c6271cd9b730b77f7d210/raw/311e98007d600dd10a3425be8312139dc442ca5d/square-pyramid.obj";
       const objurl2 =
         "https://gist.githubusercontent.com/jowens/35c1829003e62b380520f4fc043c9746/raw/e262f387f525648d2a563a9754012673c3c8a8e0/teapot.obj";
-      const mesh = await urlToMesh(objurl2);
+      const objurl3 =
+        "https://gist.githubusercontent.com/jowens/35862e5532b99b8dc82fe122aa2d99ac/raw/4ead8e010e29c3afe9ec97b6652f52a95656a216/teapot-lower.obj";
+      const objurl4 =
+        "https://gist.githubusercontent.com/jowens/3557d7ac2fedc74c6fbf003c01e292c0/raw/3cc40343da499f4650e6ca263a91b00a106d9bc7/stanford-teapot.obj";
+      const objurl5 = "http://localhost:8000/teddy.obj";
+      const objurl6 = "http://localhost:8000/square-pyramid.obj";
+      const mesh = await urlToMesh(objurl5);
       console.log(mesh);
 
       const vertices_size = mesh.level_base_ptr[1].v + mesh.level_count[1].v;
