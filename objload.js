@@ -116,9 +116,9 @@ class SubdivMesh {
     this.level_base_ptr.push(
       new Level(
         initial_vertex_count,
-        initial_vertex_count + this.level_count[level].v,
+        initial_vertex_count + this.level_count[level].f,
         initial_vertex_count +
-          this.level_count[level].v +
+          this.level_count[level].f +
           this.level_count[level].e,
         -1
       )
@@ -216,6 +216,8 @@ class SubdivMesh {
 
     // all faces have been ingested, let's subdivide!
     // XXX WRONG probably want to set v_base smarter than 0
+    console.log(edgeToEdgeID);
+    console.log(edgeToFace);
     for (
       let v_base = 0, i = 0, f_points_ptr = this.level_base_ptr[level].f;
       i < facesIn.length;
@@ -234,6 +236,8 @@ class SubdivMesh {
       switch (facesIn[i].vertices.length) {
         case 3: // triangle
           // build quads and triangles!
+          console.log("v012: ", v(0), v(1), v(2));
+          console.log("e01 e02 e12: ", e(0, 1), e(0, 2), e(1, 2));
           // prettier-ignore
           this.faces.push( // three quads
             f_points_ptr, e(0, 2), v(0), e(0, 1),
