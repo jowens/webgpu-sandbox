@@ -21,6 +21,15 @@ if (!device) {
 }
 const timingHelper = new TimingHelper(device);
 
+// we can set runtime params from the input URL
+const urlParams = new URL(window.location.href).searchParams;
+console.log(urlParams);
+const debug = urlParams.get("debug"); // string or undefined
+// if we want more:
+//   Object.fromEntries(new URL(window.location.href).searchParams.entries());
+// if url is 'https://foo.com/bar.html?abc=123&def=456&xyz=banana` then params is
+// { abc: '123', def: '456', xyz: 'banana' }   // notice they are strings, not numbers.
+
 // using webgpu-utils to have one struct for uniforms across all kernels
 // Seems kind of weird that struct is a WGSL/GPU struct, not a JS/CPU struct,
 //   but that seems to be the only option
@@ -972,30 +981,32 @@ async function frame() {
   device.queue.submit([commandBuffer]);
 
   // Read the results
-  await mappableVerticesResultBuffer.mapAsync(GPUMapMode.READ);
-  const verticesResult = new Float32Array(
-    mappableVerticesResultBuffer.getMappedRange().slice()
-  );
-  mappableVerticesResultBuffer.unmap();
-  await mappableFacetNormalsResultBuffer.mapAsync(GPUMapMode.READ);
-  const facetNormalsResult = new Float32Array(
-    mappableFacetNormalsResultBuffer.getMappedRange().slice()
-  );
-  mappableFacetNormalsResultBuffer.unmap();
-  await mappableVertexNormalsResultBuffer.mapAsync(GPUMapMode.READ);
-  const vertexNormalsResult = new Float32Array(
-    mappableVertexNormalsResultBuffer.getMappedRange().slice()
-  );
-  mappableVertexNormalsResultBuffer.unmap();
+  if (debug) {
+    await mappableVerticesResultBuffer.mapAsync(GPUMapMode.READ);
+    const verticesResult = new Float32Array(
+      mappableVerticesResultBuffer.getMappedRange().slice()
+    );
+    mappableVerticesResultBuffer.unmap();
+    await mappableFacetNormalsResultBuffer.mapAsync(GPUMapMode.READ);
+    const facetNormalsResult = new Float32Array(
+      mappableFacetNormalsResultBuffer.getMappedRange().slice()
+    );
+    mappableFacetNormalsResultBuffer.unmap();
+    await mappableVertexNormalsResultBuffer.mapAsync(GPUMapMode.READ);
+    const vertexNormalsResult = new Float32Array(
+      mappableVertexNormalsResultBuffer.getMappedRange().slice()
+    );
+    mappableVertexNormalsResultBuffer.unmap();
+    console.log("vertex buffer", verticesResult);
+  }
 
   /* is this correct for getting timing info? */
   timingHelper.getResult().then((res) => {
     // console.log("timing helper result", res);
   });
 
-  // console.log("vertex buffer", verticesResult);
-  // console.log("time", uni.views.time[0]);
   uni.views.time[0] = uni.views.time[0] + uni.views.timestep[0];
+  // console.log("time", uni.views.time[0]);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
