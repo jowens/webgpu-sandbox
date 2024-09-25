@@ -169,38 +169,19 @@ for (let i = 0; i < mesh.levelCount[0].v * verticesObjectSize; i++) {
 // should it instead be a 2D array, [face][vertex]?
 // i am guessing flattened data structures (like this one) are preferred
 const baseFaces = new Uint32Array(mesh.faces);
-
-// the following is manually generated tri indexes from baseFaces
-//   and subdiv1Faces
-// TODO: this could totally be generated programmatically from
-//   baseFaces plus baseFaceValence
-// prettier-ignore
 const triangleIndices = new Uint32Array(mesh.triangles);
-const baseTrianglesCount = mesh.levelCount[0].t;
-const subdiv1TrianglesCount = mesh.levelCount[1].t;
-console.assert(
-  triangleIndices.length / 3 == baseTrianglesCount + subdiv1TrianglesCount,
-  "triangle count should be sum of base and subdiv1 triangle counts"
-);
 const facetNormals = new Float32Array(
-  triangleIndices.length * normalsObjectSize
+  triangleIndices.length * normalsObjectSize // normal per tri
 );
-
 const baseFaceValence = new Uint32Array(mesh.faceValence);
 // baseFaceOffset is exclusive_scan('+', baseFaceValence)
 // TODO: compute that scan in a compute shader
 const baseFaceOffset = new Uint32Array(mesh.faceOffset);
-const baseFacesCount = baseFaceValence.length;
-
 const baseEdges = new Uint32Array(mesh.edges);
-const edgesObjectSize = 4; // (two faces, two edges)
-const baseEdgesCount = baseEdges.length / edgesObjectSize;
-
 const baseVertexValence = new Uint32Array(mesh.vertexValence);
 // baseVertexOffset is 2 * exclusive_scan('+', baseVertexValence)
 // TODO: compute that scan in a compute shader
 const baseVertexOffset = new Uint32Array(mesh.vertexOffset);
-const baseVertexCount = baseVertexValence.length;
 const baseVertexIndex = new Uint32Array(mesh.vertexIndex);
 const baseVertices = new Uint32Array(mesh.baseVertices.flat());
 
