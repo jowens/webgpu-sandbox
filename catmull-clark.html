@@ -1014,6 +1014,11 @@
         return model_view_projection_matrix;
       }
 
+      /** there are a TON of things in this frame() call that
+       * can probably be moved outside the call
+       *
+       * I need to know what those are!
+       */
       async function frame() {
         device.queue.writeBuffer(uniforms_buffer, 0, uni.arrayBuffer);
 
@@ -1189,15 +1194,13 @@
         );
         mappable_vertex_normals_result_buffer.unmap();
 
+        /* is this correct for getting timing info? */
         timing_helper.getResult().then((res) => {
           // console.log("timing helper result", res);
         });
 
-        /// console.log("vertex buffer", vertices_result);
-        //// console.log("facet normals buffer", facet_normals_result);
-        //// console.log("vertex normals buffer", vertex_normals_result);
+        // console.log("vertex buffer", vertices_result);
         // console.log("time", uni.views.time[0]);
-        // increment time
         uni.views.time[0] = uni.views.time[0] + uni.views.timestep[0];
         requestAnimationFrame(frame);
       }
