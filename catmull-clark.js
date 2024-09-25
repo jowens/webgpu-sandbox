@@ -23,7 +23,6 @@ const timingHelper = new TimingHelper(device);
 
 // we can set runtime params from the input URL
 const urlParams = new URL(window.location.href).searchParams;
-console.log(urlParams);
 const debug = urlParams.get("debug"); // string or undefined
 // if we want more:
 //   Object.fromEntries(new URL(window.location.href).searchParams.entries());
@@ -37,12 +36,18 @@ const debug = urlParams.get("debug"); // string or undefined
 // Q: Is this the right way to do things or is it better to have different
 //   uniform structures for each kernel?
 const uniformsCode = /* wgsl */ `
+        const MAX_LEVEL = 10;
+        struct Level {
+          f: u32, e: u32, v: u32, t: u32,
+        };
         struct MyUniforms {
           ROTATE_CAMERA_SPEED: f32,
           TOGGLE_DURATION: f32,
           WIGGLE_MAGNITUDE: f32,
           WIGGLE_SPEED: f32,
           subdivLevel: u32,
+          @align(16) levelCount: array<Level, MAX_LEVEL>,
+          levelBasePtr: array<Level, MAX_LEVEL>,
           time: f32,
           timestep: f32,
         };
@@ -92,7 +97,7 @@ pane.addBinding(uni.views.TOGGLE_DURATION, 0, {
 });
 pane.addBinding(uni.views.WIGGLE_MAGNITUDE, 0, {
   min: 0,
-  max: 0.1,
+  max: 0.02,
   label: "Wiggle Magnitude",
 });
 pane.addBinding(uni.views.WIGGLE_SPEED, 0, {
@@ -158,7 +163,7 @@ const objurl5 =
 const objurl6 =
   "https://gist.githubusercontent.com/jowens/5f7bc872317b5fd5f7d72827967f1c9d/raw/1f846ee3229297520dd855b199d21717e30af91b/stanford-teapot.obj";
 
-const mesh = await urlToMesh(objurl4);
+const mesh = await urlToMesh(objurl3);
 console.log(mesh);
 
 const verticesSize = mesh.levelBasePtr[1].v + mesh.levelCount[1].v;
@@ -203,7 +208,7 @@ const perturbInputVerticesModule = device.createShaderModule({
                     @compute @workgroup_size(${WORKGROUP_SIZE}) fn perturbInputVerticesKernel(
                              @builtin(global_invocation_id) id: vec3u) {
                       let i = id.x;
-                      if (i < ${mesh.levelCount[0].v}) {
+                      if (i < arrayLength(&vertices)) {
                         let t = myUniforms.time * myUniforms.WIGGLE_SPEED;
                         let stepsize = myUniforms.WIGGLE_MAGNITUDE;
                         let angle_start = f32(i);
@@ -755,7 +760,15 @@ const perturbBindGroup = device.createBindGroup({
   layout: perturbPipeline.getBindGroupLayout(0),
   entries: [
     { binding: 0, resource: { buffer: uniformsBuffer } },
-    { binding: 1, resource: { buffer: verticesBuffer } },
+    {
+      binding: 1,
+      resource: {
+        buffer: verticesBuffer,
+        offset: 0,
+        size: mesh.levelBasePtr[1].v * verticesObjectSize * 4,
+        // TODO: Can I compute this size better?
+      },
+    },
   ],
 });
 
