@@ -239,15 +239,21 @@ class SubdivMesh {
        */
       for (let j = 0; j < valence; j++) {
         this.faces.push(
+          /* one quad (per vertex of input face) */
           fPointsPtr,
           e(mod(j - 1, valence), j),
           v(j),
           e(j, mod(j + 1, valence))
         );
         this.triangles.push(
+          /** there exists likely a smarter way of subdividing the quad:
+           * what if (e.g.) it's non-convex? we should measure
+           * both diagonals before deciding */
+          /* first tri of above quad */
           fPointsPtr,
           e(mod(j - 1, valence), j),
           v(j),
+          /* second tri of above quad */
           fPointsPtr,
           v(j),
           e(j, mod(j + 1, valence))
