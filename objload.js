@@ -221,68 +221,39 @@ class SubdivMesh {
       const e = (v0, v1) => {
         const key = edgeToKey(this.faces[vBase + v0], this.faces[vBase + v1]);
         if (!edgeToEdgeID.has(key)) {
-          console.log("ERROR: edgeToKey does not have key ", key);
+          console.log(
+            `ERROR: edgeToKey (${v0}, ${v1}) does not have key ${key} `
+          );
         }
         return edgeToEdgeID.get(key);
       };
-      switch (facesIn[i].vertices.length) {
-        case 3: // triangle
-          // build quads and triangles!
-          // prettier-ignore
-          this.faces.push( // three quads
-            fPointsPtr, e(2, 0), v(0), e(0, 1),
-            fPointsPtr, e(0, 1), v(1), e(1, 2),
-            fPointsPtr, e(1, 2), v(2), e(2, 0)
-          );
-          // prettier-ignore
-          this.triangles.push(
-            /** TODO: There is a right way to subdivide quads->tris
-             * need to compare both diagonals & pick the better one
-             * especially if this is concave */
-            fPointsPtr, e(2, 0), v(0),
-            fPointsPtr, v(0), e(0, 1),
-            fPointsPtr, e(0, 1), v(1),
-            fPointsPtr, v(1), e(1, 2),
-            fPointsPtr, e(1, 2), v(2),
-            fPointsPtr, v(2), e(2, 0),
-          );
-          this.levelCount[level].t += 6;
-          break;
-        case 4: // quad
-          //  `Subdividing quad with vertices ${this.faces[vBase]}, ${
-          //    this.faces[vBase + 1]
-          //  }, ${this.faces[vBase + 2]}, ${this.faces[vBase + 3]}`
-          // prettier-ignore
-          this.faces.push( // four quads
-            /* TODO: Am I picking the right quads to subdivide? It's an octagon */
-            fPointsPtr, v(0), e(0, 1), v(1),
-            fPointsPtr, v(1), e(1, 2), v(2),
-            fPointsPtr, v(2), e(2, 3), v(3),
-            fPointsPtr, v(3), e(3, 0), v(0),
-          );
-          // prettier-ignore
-          this.triangles.push(
-            /** TODO: There is a right way to subdivide quads->tris
-             * need to compare both diagonals & pick the better one
-             * especially if this is concave */
-            /* TODO: Am I picking the right quads to subdivide? It's an octagon */
-            fPointsPtr, v(0), e(0, 1),
-            fPointsPtr, e(0, 1), v(1),
-            fPointsPtr, v(1), e(1, 2),
-            fPointsPtr, e(1, 2), v(2),
-            fPointsPtr, v(2), e(2, 3),
-            fPointsPtr, e(2, 3), v(3),
-            fPointsPtr, v(3), e(3, 0),
-            fPointsPtr, e(3, 0), v(0),
-          );
-          this.levelCount[level].t += 8;
-          break;
-        default:
-          console.log(
-            "ERROR: Mesh data structure currently only supports faces of valence 3 or 4"
-          );
-          break;
+      /* now we do the subdivision, push both quads and triangles */
+      const mod = (n, d) => {
+        return ((n % d) + d) % d;
+      };
+      const valence = facesIn[i].vertices.length;
+      /** this looks more complicated than it is
+       * for quads (e.g.) the first 2 faces are:
+       *   fPointsPtr, e(3,0), v(0), v(0,1)
+       *   fPointsPtr, e(1,0), v(1), v(1,2)
+       */
+      for (let j = 0; j < valence; j++) {
+        this.faces.push(
+          fPointsPtr,
+          e(mod(j - 1, valence), j),
+          v(j),
+          e(j, mod(j + 1, valence))
+        );
+        this.triangles.push(
+          fPointsPtr,
+          e(mod(j - 1, valence), j),
+          v(j),
+          fPointsPtr,
+          v(j),
+          e(j, mod(j + 1, valence))
+        );
       }
+      this.levelCount[level].t += valence * 2;
     }
     // now we have a map (edgeToFace) full of {edge -> face}
     //   and a map (edgeToEdgeID) full of {edge -> edgeID}
