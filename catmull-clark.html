@@ -293,7 +293,7 @@
       const objurl6 =
         "https://gist.githubusercontent.com/jowens/5f7bc872317b5fd5f7d72827967f1c9d/raw/1f846ee3229297520dd855b199d21717e30af91b/stanford-teapot.obj";
 
-      const mesh = await urlToMesh(objurl1);
+      const mesh = await urlToMesh(objurl4);
       console.log(mesh);
 
       const vertices_size = mesh.level_base_ptr[1].v + mesh.level_count[1].v;
@@ -1152,15 +1152,16 @@
         render_pass.setIndexBuffer(triangle_indices_buffer, "uint32");
         // next line switches every TOGGLE_DURATION frames
         // switch ((now / uni.views.TOGGLE_DURATION) & 1) {
-        // instead switch explicitly on subdiv_level:
+        // instead switch explicitly on subdiv_level
+        // clearly this math can be much much simpler
         switch (uni.views.subdiv_level[0]) {
           case 0 /* draws tris [0, base_triangles_count) */:
             start_idx = 0;
-            end_idx = base_triangles_count * 3;
+            end_idx = mesh.level_count[0].t * 3;
             break;
           case 1 /* draws tris [base_triangles_count, base + subdiv counts) */:
-            start_idx = base_triangles_count * 3;
-            end_idx = (base_triangles_count + subdiv_1_triangles_count) * 3;
+            start_idx = mesh.level_count[0].t * 3;
+            end_idx = (mesh.level_count[0].t + mesh.level_count[1].t) * 3;
             break;
         }
         render_pass.drawIndexed(
