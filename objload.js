@@ -219,30 +219,32 @@ class SubdivMesh {
         return this.levelBasePtr[level].v + this.faces[vBase + idx];
       };
       const e = (v0, v1) => {
-        return edgeToEdgeID.get(
-          edgeToKey(this.faces[vBase + v0], this.faces[vBase + v1])
-        );
+        const key = edgeToKey(this.faces[vBase + v0], this.faces[vBase + v1]);
+        if (!edgeToEdgeID.has(key)) {
+          console.log("ERROR: edgeToKey does not have key ", key);
+        }
+        return edgeToEdgeID.get(key);
       };
       switch (facesIn[i].vertices.length) {
         case 3: // triangle
           // build quads and triangles!
           // prettier-ignore
           this.faces.push( // three quads
-            fPointsPtr, e(0, 2), v(0), e(0, 1),
+            fPointsPtr, e(2, 0), v(0), e(0, 1),
             fPointsPtr, e(0, 1), v(1), e(1, 2),
-            fPointsPtr, e(1, 2), v(2), e(0, 2)
+            fPointsPtr, e(1, 2), v(2), e(2, 0)
           );
           // prettier-ignore
           this.triangles.push(
             /** TODO: There is a right way to subdivide quads->tris
              * need to compare both diagonals & pick the better one
              * especially if this is concave */
-            fPointsPtr, e(0, 2), v(0),
+            fPointsPtr, e(2, 0), v(0),
             fPointsPtr, v(0), e(0, 1),
             fPointsPtr, e(0, 1), v(1),
             fPointsPtr, v(1), e(1, 2),
             fPointsPtr, e(1, 2), v(2),
-            fPointsPtr, v(2), e(0, 2),
+            fPointsPtr, v(2), e(2, 0),
           );
           this.levelCount[level].t += 6;
           break;
