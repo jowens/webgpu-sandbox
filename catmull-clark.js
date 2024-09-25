@@ -19,7 +19,7 @@ const device = await adapter?.requestDevice({
 if (!device) {
   fail("Fatal error: Device does not support WebGPU.");
 }
-const timing_helper = new TimingHelper(device);
+const timingHelper = new TimingHelper(device);
 
 // using webgpu-utils to have one struct for uniforms across all kernels
 // Seems kind of weird that struct is a WGSL/GPU struct, not a JS/CPU struct,
@@ -27,13 +27,13 @@ const timing_helper = new TimingHelper(device);
 // the reason I want a struct is so objects can be named and not "uniforms[5]"
 // Q: Is this the right way to do things or is it better to have different
 //   uniform structures for each kernel?
-const uniforms_code = /* wgsl */ `
+const uniformsCode = /* wgsl */ `
         struct MyUniforms {
           ROTATE_CAMERA_SPEED: f32,
           TOGGLE_DURATION: f32,
           WIGGLE_MAGNITUDE: f32,
           WIGGLE_SPEED: f32,
-          subdiv_level: u32,
+          subdivLevel: u32,
           time: f32,
           timestep: f32,
         };
@@ -43,15 +43,15 @@ const uniforms_code = /* wgsl */ `
  * "It's necessary for them to show up in defs.uniforms or defs.storages. You
  *  can use defs.structs to pull out a struct, separately from a group/binding (I think?)"
  */
-const uniforms_defs = makeShaderDataDefinitions(uniforms_code);
-const uni = makeStructuredView(uniforms_defs.uniforms.myUniforms);
+const uniformsDefs = makeShaderDataDefinitions(uniformsCode);
+const uni = makeStructuredView(uniformsDefs.uniforms.myUniforms);
 
 uni.set({
   ROTATE_CAMERA_SPEED: 0.006, // how quickly camera rotates
   TOGGLE_DURATION: 400.0, // number of timesteps between model toggle
   WIGGLE_MAGNITUDE: 0, // 0.002, //0.025, // how much vertices are perturbed
   WIGGLE_SPEED: 0.05, // how quickly perturbations occur
-  subdiv_level: 0,
+  subdivLevel: 0,
   time: 0.0,
   timestep: 1.0,
 });
@@ -60,7 +60,7 @@ const models = {
   model: "pyramid",
 };
 
-const model_urls = {
+const modelUrls = {
   pyramid:
     "https://gist.githubusercontent.com/jowens/fb3a19db8f4c6271cd9b730b77f7d210/raw/311e98007d600dd10a3425be8312139dc442ca5d/square-pyramid.obj",
   teapot_low:
@@ -91,7 +91,7 @@ pane.addBinding(uni.views.WIGGLE_SPEED, 0, {
   max: 1,
   label: "Wiggle Speed",
 });
-pane.addBinding(uni.views.subdiv_level, 0, {
+pane.addBinding(uni.views.subdivLevel, 0, {
   min: 0,
   max: 1,
   step: 1,
@@ -100,7 +100,7 @@ pane.addBinding(uni.views.subdiv_level, 0, {
 
 const WORKGROUP_SIZE = 64;
 
-const uniforms_buffer = device.createBuffer({
+const uniformsBuffer = device.createBuffer({
   size: uni.arrayBuffer.byteLength,
   usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 });
@@ -152,69 +152,68 @@ const objurl6 =
 const mesh = await urlToMesh(objurl4);
 console.log(mesh);
 
-const vertices_size = mesh.level_base_ptr[1].v + mesh.level_count[1].v;
-const vertices_object_size = 4; // float4s (but ignore w coord for now)
-const normals_object_size = 4; // float4s (but ignore w coord for now)
+const verticesSize = mesh.levelBasePtr[1].v + mesh.levelCount[1].v;
+const verticesObjectSize = 4; // float4s (but ignore w coord for now)
+const normalsObjectSize = 4; // float4s (but ignore w coord for now)
 // float3s were fraught with peril (padding)
-const vertices = new Float32Array(vertices_size * vertices_object_size);
-// vertex_normals is uninitialized; it's instead set in a kernel
-const vertex_normals = new Float32Array(vertices_size * normals_object_size);
+const vertices = new Float32Array(verticesSize * verticesObjectSize);
+// vertexNormals is uninitialized; it's instead set in a kernel
+const vertexNormals = new Float32Array(verticesSize * normalsObjectSize);
 
 /* populate vertices from mesh data structure */
-for (let i = 0; i < mesh.level_count[0].v * vertices_object_size; i++) {
+for (let i = 0; i < mesh.levelCount[0].v * verticesObjectSize; i++) {
   vertices[i] = mesh.vertices[i];
 }
 
 // Q: Is a flattened 1D array the right way to represent base faces?
 // should it instead be a 2D array, [face][vertex]?
 // i am guessing flattened data structures (like this one) are preferred
-const base_faces = new Uint32Array(mesh.faces);
+const baseFaces = new Uint32Array(mesh.faces);
 
-// the following is manually generated tri indexes from base_faces
-//   and subdiv_1_faces
+// the following is manually generated tri indexes from baseFaces
+//   and subdiv1Faces
 // TODO: this could totally be generated programmatically from
-//   base_faces plus base_face_valence
+//   baseFaces plus baseFaceValence
 // prettier-ignore
-const triangle_indices = new Uint32Array(mesh.triangles);
-const base_triangles_count = mesh.level_count[0].t;
-const subdiv_1_triangles_count = mesh.level_count[1].t;
+const triangleIndices = new Uint32Array(mesh.triangles);
+const baseTrianglesCount = mesh.levelCount[0].t;
+const subdiv1TrianglesCount = mesh.levelCount[1].t;
 console.assert(
-  triangle_indices.length / 3 ==
-    base_triangles_count + subdiv_1_triangles_count,
-  "triangle count should be sum of base and subdiv_1 triangle counts"
+  triangleIndices.length / 3 == baseTrianglesCount + subdiv1TrianglesCount,
+  "triangle count should be sum of base and subdiv1 triangle counts"
 );
-const facet_normals = new Float32Array(
-  triangle_indices.length * normals_object_size
+const facetNormals = new Float32Array(
+  triangleIndices.length * normalsObjectSize
 );
 
-const base_face_valence = new Uint32Array(mesh.face_valence);
-// base_face_offset is exclusive_scan('+', base_face_valence)
+const baseFaceValence = new Uint32Array(mesh.faceValence);
+// baseFaceOffset is exclusive_scan('+', baseFaceValence)
 // TODO: compute that scan in a compute shader
-const base_face_offset = new Uint32Array(mesh.face_offset);
-const base_faces_count = base_face_valence.length;
+const baseFaceOffset = new Uint32Array(mesh.faceOffset);
+const baseFacesCount = baseFaceValence.length;
 
-const base_edges = new Uint32Array(mesh.edges);
-const edges_object_size = 4; // (two faces, two edges)
-const base_edges_count = base_edges.length / edges_object_size;
+const baseEdges = new Uint32Array(mesh.edges);
+const edgesObjectSize = 4; // (two faces, two edges)
+const baseEdgesCount = baseEdges.length / edgesObjectSize;
 
-const base_vertex_valence = new Uint32Array(mesh.vertex_valence);
-// base_vertex_offset is 2 * exclusive_scan('+', base_vertex_valence)
+const baseVertexValence = new Uint32Array(mesh.vertexValence);
+// baseVertexOffset is 2 * exclusive_scan('+', baseVertexValence)
 // TODO: compute that scan in a compute shader
-const base_vertex_offset = new Uint32Array(mesh.vertex_offset);
-const base_vertex_count = base_vertex_valence.length;
-const base_vertex_index = new Uint32Array(mesh.vertex_index);
-const base_vertices = new Uint32Array(mesh.base_vertices.flat());
+const baseVertexOffset = new Uint32Array(mesh.vertexOffset);
+const baseVertexCount = baseVertexValence.length;
+const baseVertexIndex = new Uint32Array(mesh.vertexIndex);
+const baseVertices = new Uint32Array(mesh.baseVertices.flat());
 
-const perturb_input_vertices_module = device.createShaderModule({
+const perturbInputVerticesModule = device.createShaderModule({
   label: "perturb input vertices module",
   code: /* wgsl */ `
-                    ${uniforms_code} /* this specifies @group(0) @binding(0) */
+                    ${uniformsCode} /* this specifies @group(0) @binding(0) */
                     /* input + output */
                     @group(0) @binding(1) var<storage, read_write> vertices: array<vec3f>;
                     @compute @workgroup_size(${WORKGROUP_SIZE}) fn perturbInputVerticesKernel(
                              @builtin(global_invocation_id) id: vec3u) {
                       let i = id.x;
-                      if (i < ${mesh.level_count[0].v}) {
+                      if (i < ${mesh.levelCount[0].v}) {
                         let t = myUniforms.time * myUniforms.WIGGLE_SPEED;
                         let stepsize = myUniforms.WIGGLE_MAGNITUDE;
                         let angle_start = f32(i);
@@ -236,25 +235,25 @@ const perturb_input_vertices_module = device.createShaderModule({
 });
 
 /** (1) Calculation of face points
- * Number of faces: base_face_valence.length == base_faces_count
+ * Number of faces: baseFaceValence.length == baseFacesCount
  * for each face: new face point = centroid(vertices of current face)
  * Pseudocode:   (note math operations are on vec3f's)
- * parallel for i in [0 .. base_face_valence.length]:
- *   new_faces[i] = [0,0,0]
- *   for j in [base_face_offset[i] .. base_face_offset[i] + base_face_valence[i]]:
- *     new_faces[i] += vertices[base_faces[j]
- *   new_faces[i] /= base_face_valence[i]
+ * parallel for i in [0 .. baseFaceValence.length]:
+ *   newFaces[i] = [0,0,0]
+ *   for j in [baseFaceOffset[i] .. baseFaceOffset[i] + baseFaceValence[i]]:
+ *     newFaces[i] += vertices[baseFaces[j]
+ *   newFaces[i] /= baseFaceValence[i]
  */
-console.log("face pts write_ptr: ", mesh.level_base_ptr[1].f);
-const face_points_module = device.createShaderModule({
+console.log("face pts write_ptr: ", mesh.levelBasePtr[1].f);
+const facePointsModule = device.createShaderModule({
   label: "face points module",
   code: /* wgsl */ `
                     /* input + output */
                     @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
                             /* input */
-                    @group(0) @binding(1) var<storage, read> base_faces: array<u32>;
-                    @group(0) @binding(2) var<storage, read> base_face_offset: array<u32>;
-                    @group(0) @binding(3) var<storage, read> base_face_valence: array<u32>;
+                    @group(0) @binding(1) var<storage, read> baseFaces: array<u32>;
+                    @group(0) @binding(2) var<storage, read> baseFaceOffset: array<u32>;
+                    @group(0) @binding(3) var<storage, read> baseFaceValence: array<u32>;
 
                     /** Niessner 2012:
                       * "The face kernel requires two buffers: one index buffer, whose
@@ -262,24 +261,24 @@ const face_points_module = device.createShaderModule({
                       * second buffer stores the valence of the face along with an offset
                       * into the index buffer for the first vertex of each face."
                       *
-                      * implementation above: "index buffer" is base_faces
-                      *                       "valence of the face" is base_face_valence
-                      *                       "offset into the index buffer" is base_face_offset
+                      * implementation above: "index buffer" is baseFaces
+                      *                       "valence of the face" is baseFaceValence
+                      *                       "offset into the index buffer" is baseFaceOffset
                       */
 
                     @compute @workgroup_size(${WORKGROUP_SIZE}) fn facePointsKernel(
                       @builtin(global_invocation_id) id: vec3u) {
                       let i = id.x;
-                      if (i < ${mesh.level_count[1].f}) {
+                      if (i < ${mesh.levelCount[1].f}) {
                         /* TODO: exit if my index is larger than the size of the input */
 
-                        let out = i + ${mesh.level_base_ptr[1].f};
+                        let out = i + ${mesh.levelBasePtr[1].f};
                         vertices[out] = vec3f(0,0,0);
-                        for (var j: u32 = base_face_offset[i]; j < base_face_offset[i] + base_face_valence[i]; j++) {
-                          let face_vertex = base_faces[j];
-                          vertices[out] += vertices[face_vertex];
+                        for (var j: u32 = baseFaceOffset[i]; j < baseFaceOffset[i] + baseFaceValence[i]; j++) {
+                          let faceVertex = baseFaces[j];
+                          vertices[out] += vertices[faceVertex];
                         }
-                        vertices[out] /= f32(base_face_valence[i]);
+                        vertices[out] /= f32(baseFaceValence[i]);
                       }
                       // TODO: decide on vec3f or vec4f and set w if so
                     }
@@ -295,38 +294,38 @@ const face_points_module = device.createShaderModule({
  */
 
 /** (2) Calculation of edge points
- * Number of edges: base_edges.length
+ * Number of edges: baseEdges.length
  * for each edge: new edge point = average(2 neighboring face points, 2 endpoints of edge)
  * Pseudocode:   (note math operations are on vec3f's)
  * parallel for i in [0 .. ?.length]:
- *   new_edges[i] = 0.25 * ( vertices[edge_id] + vertices[edge_id + 1] +
- *                           vertices[edge_id + 2] + vertices[edge_id + 3])
+ *   newEdges[i] = 0.25 * ( vertices[edgeID] + vertices[edgeID + 1] +
+ *                           vertices[edgeID + 2] + vertices[edgeID + 3])
  */
 
-console.log("edge pts write_ptr: ", mesh.level_base_ptr[1].e);
-const edge_points_module = device.createShaderModule({
+console.log("edge pts write_ptr: ", mesh.levelBasePtr[1].e);
+const edgePointsModule = device.createShaderModule({
   label: "edge points module",
   code: /* wgsl */ `
                     /* input + output */
                     @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
                     /* input */
-                    @group(0) @binding(1) var<storage, read> base_edges: array<vec4u>;
+                    @group(0) @binding(1) var<storage, read> baseEdges: array<vec4u>;
 
                     /** "Since a single (non-boundary) edge always has two incident faces and vertices,
                      * the edge kernel needs a buffer for the indices of these entities."
                      *
-                     * implementation above: "a buffer for the indices of these entities" is base_edges
+                     * implementation above: "a buffer for the indices of these entities" is baseEdges
                      */
 
-                    @compute @workgroup_size(${WORKGROUP_SIZE}) fn edge_points_kernel(
+                    @compute @workgroup_size(${WORKGROUP_SIZE}) fn edgePointsKernel(
                       @builtin(global_invocation_id) id: vec3u) {
                         let i = id.x;
-                        if (i < ${mesh.level_count[1].e}) {
-                          let out = i + ${mesh.level_base_ptr[1].e};
-                          let edge_id = i;
+                        if (i < ${mesh.levelCount[1].e}) {
+                          let out = i + ${mesh.levelBasePtr[1].e};
+                          let edgeID = i;
                           vertices[out] = vec3f(0,0,0);
                           for (var j: u32 = 0; j < 4; j++) {
-                            vertices[out] += vertices[base_edges[edge_id][j]];
+                            vertices[out] += vertices[baseEdges[edgeID][j]];
                           }
                           vertices[out] *= 0.25;
                         }
@@ -355,54 +354,54 @@ const edge_points_module = device.createShaderModule({
  * - Ve is the average of the other endpoint of all incident edges
  *   - The actual math is "midpoint of all incident edges", but one end of all
  *     those edges is just V (below), so we lump that contribution into the V term
- *   - F and Ve are just listed in the base_vertices table
+ *   - F and Ve are just listed in the baseVertices table
  * - V is this vertex
  *   - Output is (F + Ve + (n-2) V) / n
- * - If F and Ve points are f_0, f_1, Ve_0, ...:
- *   - Output is [(f_0 + f_1 + ... + Ve_0 + Ve_1 + ...) / n _ (n-2) V] / n
- * Number of vertex points: base_vertex_valence.length
+ * - If F and Ve points are f_0, f1, Ve_0, ...:
+ *   - Output is [(f_0 + f1 + ... + Ve_0 + Ve1 + ...) / n _ (n-2) V] / n
+ * Number of vertex points: baseVertexValence.length
  * Pseudocode:   (note math operations are on vec3f's)
- * parallel for i in [0 .. base_vertex_valence.length]:
- *   new_vertex[i] = [0,0,0]
- *   valence = base_vertex_valence[i]
- *   for j in [base_vertex_offset[i] .. base_vertex_offset[i] + base_vertex_valence[i]]:
- *     new_vertex[i] += vertices[base_vertices[j]]
- *   new_vertex[i] /= base_vertex_valence[i]
- *   new_vertex[i] += (n-2) * base_vertex_index[i]
- *   new_vertex[i] /= base_vertex_valence[i]
+ * parallel for i in [0 .. baseVertexValence.length]:
+ *   newVertex[i] = [0,0,0]
+ *   valence = baseVertexValence[i]
+ *   for j in [baseVertexOffset[i] .. baseVertexOffset[i] + baseVertexValence[i]]:
+ *     newVertex[i] += vertices[baseVertices[j]]
+ *   newVertex[i] /= baseVertexValence[i]
+ *   newVertex[i] += (n-2) * baseVertexIndex[i]
+ *   newVertex[i] /= baseVertexValence[i]
  */
 
-console.log("vertex pts write_ptr: ", mesh.level_base_ptr[1].v);
-const vertex_points_module = device.createShaderModule({
+console.log("vertex pts write_ptr: ", mesh.levelBasePtr[1].v);
+const vertexPointsModule = device.createShaderModule({
   label: "vertex points module",
   code: /* wgsl */ `
                     /* input + output */
                     @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
                     /* input */
-                    @group(0) @binding(1) var<storage, read> base_vertices: array<u32>;
-                    @group(0) @binding(2) var<storage, read> base_vertex_offset: array<u32>;
-                    @group(0) @binding(3) var<storage, read> base_vertex_valence: array<u32>;
-                    @group(0) @binding(4) var<storage, read> base_vertex_index: array<u32>;
+                    @group(0) @binding(1) var<storage, read> baseVertices: array<u32>;
+                    @group(0) @binding(2) var<storage, read> baseVertexOffset: array<u32>;
+                    @group(0) @binding(3) var<storage, read> baseVertexValence: array<u32>;
+                    @group(0) @binding(4) var<storage, read> baseVertexIndex: array<u32>;
 
                     /** "We use an index buffer containing the indices of the incident edge and
                      * vertex points."
                      *
-                     * implementation above: "a buffer for the indices of these entities" is base_vertices
+                     * implementation above: "a buffer for the indices of these entities" is baseVertices
                      */
 
-                    @compute @workgroup_size(${WORKGROUP_SIZE}) fn vertex_points_kernel(
+                    @compute @workgroup_size(${WORKGROUP_SIZE}) fn vertexPointsKernel(
                       @builtin(global_invocation_id) id: vec3u) {
                         let i = id.x;
-                        if (i < ${mesh.level_count[1].v}) {
-                          let out = i + ${mesh.level_base_ptr[1].v};
-                          let valence = base_vertex_valence[i];
+                        if (i < ${mesh.levelCount[1].v}) {
+                          let out = i + ${mesh.levelBasePtr[1].v};
+                          let valence = baseVertexValence[i];
                           vertices[out] = vec3f(0,0,0);
-                          for (var j: u32 = base_vertex_offset[i]; j < base_vertex_offset[i] + 2 * base_vertex_valence[i]; j++) {
-                            let base_vertex = base_vertices[j];
-                            vertices[out] += vertices[base_vertex];
+                          for (var j: u32 = baseVertexOffset[i]; j < baseVertexOffset[i] + 2 * baseVertexValence[i]; j++) {
+                            let baseVertex = baseVertices[j];
+                            vertices[out] += vertices[baseVertex];
                           }
                           vertices[out] /= f32(valence);
-                          vertices[out] += f32(valence - 2) * vertices[base_vertex_index[i]];
+                          vertices[out] += f32(valence - 2) * vertices[baseVertexIndex[i]];
                           vertices[out] /= f32(valence);
                           // TODO: decide on vec3f or vec4f and set w if so
                       }
@@ -418,24 +417,24 @@ const vertex_points_module = device.createShaderModule({
  * 22 | 0.40740740299224854, 0.40740740299224854, 0.18518519401550293, 0
  */
 
-const facet_normals_module = device.createShaderModule({
+const facetNormalsModule = device.createShaderModule({
   label: "compute facet normals module",
   code: /* wgsl */ `
                     /* output */
-                    @group(0) @binding(0) var<storage, read_write> facet_normals: array<vec3f>;
+                    @group(0) @binding(0) var<storage, read_write> facetNormals: array<vec3f>;
                     /* input */
                     @group(0) @binding(1) var<storage, read> vertices: array<vec3f>;
-                    @group(0) @binding(2) var<storage, read> triangle_indices: array<u32>;
+                    @group(0) @binding(2) var<storage, read> triangleIndices: array<u32>;
 
                      /** Algorithm:
                       * For tri in all triangles:
                       *   Fetch all 3 vertices of tri
                       *   Compute normalize(cross(v1-v0, v2-v0))
                       *   For each vertex in tri:
-                      *     Atomically add it to vertex_normals[vertex]
+                      *     Atomically add it to vertexNormals[vertex]
                       *     /* Can't do this! No f32 atomics */
                       * For vertex in all vertices:
-                      *   Normalize vertex_normals[vertex]
+                      *   Normalize vertexNormals[vertex]
                       *
                       * OK, so we can't do this approach w/o f32 atomics
                       * So we will instead convert this scatter to gather
@@ -455,57 +454,57 @@ const facet_normals_module = device.createShaderModule({
                       *       normal[vertex] += facet_normal[tri]
                       *   normalize(normal[vertex])
                       */
-                    @compute @workgroup_size(${WORKGROUP_SIZE}) fn facet_normals_kernel(
+                    @compute @workgroup_size(${WORKGROUP_SIZE}) fn facetNormalsKernel(
                       @builtin(global_invocation_id) id: vec3u) {
                         let tri = id.x;
-                        if (tri < arrayLength(&facet_normals)) {
-                          /* note triangle_indices is u32 not vec3, do math accordingly */
-                          let v0: vec3f = vertices[triangle_indices[tri * 3]];
-                          let v1: vec3f = vertices[triangle_indices[tri * 3 + 1]];
-                          let v2: vec3f = vertices[triangle_indices[tri * 3 + 2]];
-                          facet_normals[tri] = normalize(cross(v1-v0, v2-v0));
+                        if (tri < arrayLength(&facetNormals)) {
+                          /* note triangleIndices is u32 not vec3, do math accordingly */
+                          let v0: vec3f = vertices[triangleIndices[tri * 3]];
+                          let v1: vec3f = vertices[triangleIndices[tri * 3 + 1]];
+                          let v2: vec3f = vertices[triangleIndices[tri * 3 + 2]];
+                          facetNormals[tri] = normalize(cross(v1-v0, v2-v0));
                         }
                       }
                   `,
 });
 
-const vertex_normals_module = device.createShaderModule({
+const vertexNormalsModule = device.createShaderModule({
   label: "compute vertex normals module",
   code: /* wgsl */ `
                     /* output */
-                    @group(0) @binding(0) var<storage, read_write> vertex_normals: array<vec3f>;
+                    @group(0) @binding(0) var<storage, read_write> vertexNormals: array<vec3f>;
                     /* input */
-                    @group(0) @binding(1) var<storage, read> facet_normals: array<vec3f>;
-                    @group(0) @binding(2) var<storage, read> triangle_indices: array<u32>;
+                    @group(0) @binding(1) var<storage, read> facetNormals: array<vec3f>;
+                    @group(0) @binding(2) var<storage, read> triangleIndices: array<u32>;
 
-                    /* see facet_normals_module for algorithm */
+                    /* see facetNormalsModule for algorithm */
 
-                    @compute @workgroup_size(${WORKGROUP_SIZE}) fn vertex_normals_kernel(
+                    @compute @workgroup_size(${WORKGROUP_SIZE}) fn vertexNormalsKernel(
                       @builtin(global_invocation_id) id: vec3u) {
                         let vtx = id.x;
-                        if (vtx < arrayLength(&vertex_normals)) {
-                          vertex_normals[vtx] = vec3f(0, 0, 0);
-                          /* note triangle_indices is u32 not vec3, do math accordingly */
-                          for (var tri: u32 = 0; tri < arrayLength(&triangle_indices) / 3; tri++) {
-                            for (var tri_vtx: u32 = 0; tri_vtx < 3; tri_vtx++) { /* unroll */
-                              if (vtx == triangle_indices[tri * 3 + tri_vtx]) {
-                                vertex_normals[vtx] += facet_normals[tri];
+                        if (vtx < arrayLength(&vertexNormals)) {
+                          vertexNormals[vtx] = vec3f(0, 0, 0);
+                          /* note triangleIndices is u32 not vec3, do math accordingly */
+                          for (var tri: u32 = 0; tri < arrayLength(&triangleIndices) / 3; tri++) {
+                            for (var triVtx: u32 = 0; triVtx < 3; triVtx++) { /* unroll */
+                              if (vtx == triangleIndices[tri * 3 + triVtx]) {
+                                vertexNormals[vtx] += facetNormals[tri];
                               }
                             }
                           }
-                          vertex_normals[vtx] = normalize(vertex_normals[vtx]);
+                          vertexNormals[vtx] = normalize(vertexNormals[vtx]);
                         }
                     }
                   `,
 });
 
-const render_module = device.createShaderModule({
+const renderModule = device.createShaderModule({
   label: "render module",
   code: /* wgsl */ `
                     struct VertexInput {
                       @location(0) pos: vec4f,
-                      @location(1) vertex_normals: vec3f,
-                      @builtin(vertex_index) vertex_index: u32,
+                      @location(1) vertexNormals: vec3f,
+                      @builtin(vertex_index) vertexIndex: u32,
                     };
 
                     struct VertexOutput {
@@ -520,15 +519,15 @@ const render_module = device.createShaderModule({
                     @binding(0) @group(0) var<uniform> uniforms : Uniforms;
 
                     @vertex
-                    fn vertex_main(@location(0) pos: vec4f,
+                    fn vertexMain(@location(0) pos: vec4f,
                                   @location(1) norm: vec3f,
-                                  @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
+                                  @builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
                       var output: VertexOutput;
                       output.pos = uniforms.modelViewProjectionMatrix * pos;
                       output.color = vec4f( // this generates 64 different colors
-                        0.35 + select(0, 0.6, (vertex_index & 1) != 0) - select(0, 0.3, (vertex_index & 8) != 0),
-                        0.35 + select(0, 0.6, (vertex_index & 2) != 0) - select(0, 0.3, (vertex_index & 16) != 0),
-                        0.35 + select(0, 0.6, (vertex_index & 4) != 0) - select(0, 0.3, (vertex_index & 32) != 0),
+                        0.35 + select(0, 0.6, (vertexIndex & 1) != 0) - select(0, 0.3, (vertexIndex & 8) != 0),
+                        0.35 + select(0, 0.6, (vertexIndex & 2) != 0) - select(0, 0.3, (vertexIndex & 16) != 0),
+                        0.35 + select(0, 0.6, (vertexIndex & 4) != 0) - select(0, 0.3, (vertexIndex & 32) != 0),
                         0.75 /* partial transparency might aid debugging */);
                       /* let's try "lighting", in model space */
                       /* this is just a dot product with the infinite white light at (1,1,1) */
@@ -539,72 +538,72 @@ const render_module = device.createShaderModule({
                     }
 
                     @fragment
-                    fn fragment_main(input: VertexOutput) -> @location(0) vec4f {
+                    fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
                       return input.color;
                     }
                   `,
 });
 
-const perturb_pipeline = device.createComputePipeline({
+const perturbPipeline = device.createComputePipeline({
   label: "perturb input vertices compute pipeline",
   layout: "auto",
   compute: {
-    module: perturb_input_vertices_module,
+    module: perturbInputVerticesModule,
   },
 });
 
-const face_pipeline = device.createComputePipeline({
+const facePipeline = device.createComputePipeline({
   label: "face points compute pipeline",
   layout: "auto",
   compute: {
-    module: face_points_module,
+    module: facePointsModule,
   },
 });
 
-const edge_pipeline = device.createComputePipeline({
+const edgePipeline = device.createComputePipeline({
   label: "edge points compute pipeline",
   layout: "auto",
   compute: {
-    module: edge_points_module,
+    module: edgePointsModule,
   },
 });
 
-const vertex_pipeline = device.createComputePipeline({
+const vertexPipeline = device.createComputePipeline({
   label: "vertex points compute pipeline",
   layout: "auto",
   compute: {
-    module: vertex_points_module,
+    module: vertexPointsModule,
   },
 });
 
-const facet_normals_pipeline = device.createComputePipeline({
+const facetNormalsPipeline = device.createComputePipeline({
   label: "facet normals compute pipeline",
   layout: "auto",
   compute: {
-    module: facet_normals_module,
+    module: facetNormalsModule,
   },
 });
 
-const vertex_normals_pipeline = device.createComputePipeline({
+const vertexNormalsPipeline = device.createComputePipeline({
   label: "vertex normals compute pipeline",
   layout: "auto",
   compute: {
-    module: vertex_normals_module,
+    module: vertexNormalsModule,
   },
 });
 
-const depth_texture = device.createTexture({
+const depthTexture = device.createTexture({
   size: [canvas.width, canvas.height],
   format: "depth24plus",
   usage: GPUTextureUsage.RENDER_ATTACHMENT,
 });
 
-const render_pipeline = device.createRenderPipeline({
+const renderPipeline = device.createRenderPipeline({
   label: "render pipeline",
   layout: "auto",
   vertex: {
-    module: render_module,
-    entryPoint: "vertex_main",
+    module: renderModule,
+    entryPoint: "vertexMain",
     buffers: [
       {
         // Buffer 0
@@ -626,8 +625,8 @@ const render_pipeline = device.createRenderPipeline({
     ],
   },
   fragment: {
-    module: render_module,
-    entryPoint: "fragment_main",
+    module: renderModule,
+    entryPoint: "fragmentMain",
     targets: [
       {
         format: canvasFormat,
@@ -643,80 +642,80 @@ const render_pipeline = device.createRenderPipeline({
 
 // create buffers on the GPU to hold data
 // read-only inputs:
-const base_faces_buffer = device.createBuffer({
+const baseFacesBuffer = device.createBuffer({
   label: "base faces buffer",
-  size: base_faces.byteLength,
+  size: baseFaces.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(base_faces_buffer, 0, base_faces);
+device.queue.writeBuffer(baseFacesBuffer, 0, baseFaces);
 
-const base_edges_buffer = device.createBuffer({
+const baseEdgesBuffer = device.createBuffer({
   label: "base edges buffer",
-  size: base_edges.byteLength,
+  size: baseEdges.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(base_edges_buffer, 0, base_edges);
+device.queue.writeBuffer(baseEdgesBuffer, 0, baseEdges);
 
-const base_face_offset_buffer = device.createBuffer({
+const baseFaceOffsetBuffer = device.createBuffer({
   label: "base face offset",
-  size: base_face_offset.byteLength,
+  size: baseFaceOffset.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(base_face_offset_buffer, 0, base_face_offset);
+device.queue.writeBuffer(baseFaceOffsetBuffer, 0, baseFaceOffset);
 
-const base_face_valence_buffer = device.createBuffer({
+const baseFaceValenceBuffer = device.createBuffer({
   label: "base face valence",
-  size: base_face_valence.byteLength,
+  size: baseFaceValence.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(base_face_valence_buffer, 0, base_face_valence);
+device.queue.writeBuffer(baseFaceValenceBuffer, 0, baseFaceValence);
 
-const base_vertices_buffer = device.createBuffer({
+const baseVerticesBuffer = device.createBuffer({
   label: "base vertices buffer",
-  size: base_vertices.byteLength,
+  size: baseVertices.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(base_vertices_buffer, 0, base_vertices);
+device.queue.writeBuffer(baseVerticesBuffer, 0, baseVertices);
 
-const base_vertex_offset_buffer = device.createBuffer({
+const baseVertexOffsetBuffer = device.createBuffer({
   label: "base vertex offset buffer",
-  size: base_vertex_offset.byteLength,
+  size: baseVertexOffset.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(base_vertex_offset_buffer, 0, base_vertex_offset);
+device.queue.writeBuffer(baseVertexOffsetBuffer, 0, baseVertexOffset);
 
-const base_vertex_valence_buffer = device.createBuffer({
+const baseVertexValenceBuffer = device.createBuffer({
   label: "base vertex valence buffer",
-  size: base_vertex_valence.byteLength,
+  size: baseVertexValence.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(base_vertex_valence_buffer, 0, base_vertex_valence);
+device.queue.writeBuffer(baseVertexValenceBuffer, 0, baseVertexValence);
 
-const base_vertex_index_buffer = device.createBuffer({
+const baseVertexIndexBuffer = device.createBuffer({
   label: "base vertex index buffer",
-  size: base_vertex_index.byteLength,
+  size: baseVertexIndex.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(base_vertex_index_buffer, 0, base_vertex_index);
+device.queue.writeBuffer(baseVertexIndexBuffer, 0, baseVertexIndex);
 
-const triangle_indices_buffer = device.createBuffer({
+const triangleIndicesBuffer = device.createBuffer({
   label: "triangle indices buffer",
-  size: triangle_indices.byteLength,
+  size: triangleIndices.byteLength,
   usage:
     GPUBufferUsage.INDEX | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(triangle_indices_buffer, 0, triangle_indices);
+device.queue.writeBuffer(triangleIndicesBuffer, 0, triangleIndices);
 
-const mvx_length = 4 * 16; /* float32 4x4 matrix */
-const mvx_buffer = device.createBuffer({
+const mvxLength = 4 * 16; /* float32 4x4 matrix */
+const mvxBuffer = device.createBuffer({
   label: "modelview + transformation matrix uniform buffer",
-  size: mvx_length,
+  size: mvxLength,
   usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 });
 // write happens at the start of every frame
 
 // vertex buffer is both input and output
-const vertices_buffer = device.createBuffer({
+const verticesBuffer = device.createBuffer({
   label: "vertex buffer",
   size: vertices.byteLength,
   usage:
@@ -725,124 +724,124 @@ const vertices_buffer = device.createBuffer({
     GPUBufferUsage.COPY_DST |
     GPUBufferUsage.COPY_SRC,
 });
-device.queue.writeBuffer(vertices_buffer, 0, vertices);
+device.queue.writeBuffer(verticesBuffer, 0, vertices);
 
-const facet_normals_buffer = device.createBuffer({
+const facetNormalsBuffer = device.createBuffer({
   label: "facet normals buffer",
-  size: facet_normals.byteLength,
+  size: facetNormals.byteLength,
   usage:
     GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
 });
-device.queue.writeBuffer(facet_normals_buffer, 0, facet_normals);
+device.queue.writeBuffer(facetNormalsBuffer, 0, facetNormals);
 
-const vertex_normals_buffer = device.createBuffer({
+const vertexNormalsBuffer = device.createBuffer({
   label: "vertex normals buffer",
-  size: vertex_normals.byteLength,
+  size: vertexNormals.byteLength,
   usage:
     GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
 });
-device.queue.writeBuffer(vertex_normals_buffer, 0, vertex_normals);
+device.queue.writeBuffer(vertexNormalsBuffer, 0, vertexNormals);
 
 /** and the mappable output buffers (I believe that "mappable" is the only way to read from GPU->CPU) */
-const mappable_vertices_result_buffer = device.createBuffer({
+const mappableVerticesResultBuffer = device.createBuffer({
   label: "mappable vertices result buffer",
   size: vertices.byteLength,
   usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
 });
-const mappable_facet_normals_result_buffer = device.createBuffer({
+const mappableFacetNormalsResultBuffer = device.createBuffer({
   label: "mappable facet normals result buffer",
-  size: facet_normals.byteLength,
+  size: facetNormals.byteLength,
   usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
 });
-const mappable_vertex_normals_result_buffer = device.createBuffer({
+const mappableVertexNormalsResultBuffer = device.createBuffer({
   label: "mappable vertex normals result buffer",
-  size: vertex_normals.byteLength,
+  size: vertexNormals.byteLength,
   usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
 });
 
 /** Set up bindGroups per compute kernel to tell the shader which buffers to use */
-const perturb_bind_group = device.createBindGroup({
+const perturbBindGroup = device.createBindGroup({
   label: "bindGroup for perturb input vertices kernel",
-  layout: perturb_pipeline.getBindGroupLayout(0),
+  layout: perturbPipeline.getBindGroupLayout(0),
   entries: [
-    { binding: 0, resource: { buffer: uniforms_buffer } },
-    { binding: 1, resource: { buffer: vertices_buffer } },
+    { binding: 0, resource: { buffer: uniformsBuffer } },
+    { binding: 1, resource: { buffer: verticesBuffer } },
   ],
 });
 
-const face_bind_group = device.createBindGroup({
+const faceBindGroup = device.createBindGroup({
   label: "bindGroup for face kernel",
-  layout: face_pipeline.getBindGroupLayout(0),
+  layout: facePipeline.getBindGroupLayout(0),
   entries: [
-    { binding: 0, resource: { buffer: vertices_buffer } },
-    { binding: 1, resource: { buffer: base_faces_buffer } },
-    { binding: 2, resource: { buffer: base_face_offset_buffer } },
-    { binding: 3, resource: { buffer: base_face_valence_buffer } },
+    { binding: 0, resource: { buffer: verticesBuffer } },
+    { binding: 1, resource: { buffer: baseFacesBuffer } },
+    { binding: 2, resource: { buffer: baseFaceOffsetBuffer } },
+    { binding: 3, resource: { buffer: baseFaceValenceBuffer } },
   ],
 });
 
-const edge_bind_group = device.createBindGroup({
+const edgeBindGroup = device.createBindGroup({
   label: "bindGroup for edge kernel",
-  layout: edge_pipeline.getBindGroupLayout(0),
+  layout: edgePipeline.getBindGroupLayout(0),
   entries: [
-    { binding: 0, resource: { buffer: vertices_buffer } },
-    { binding: 1, resource: { buffer: base_edges_buffer } },
+    { binding: 0, resource: { buffer: verticesBuffer } },
+    { binding: 1, resource: { buffer: baseEdgesBuffer } },
   ],
 });
 
-const vertex_bind_group = device.createBindGroup({
+const vertexBindGroup = device.createBindGroup({
   label: "bindGroup for vertex kernel",
-  layout: vertex_pipeline.getBindGroupLayout(0),
+  layout: vertexPipeline.getBindGroupLayout(0),
   entries: [
-    { binding: 0, resource: { buffer: vertices_buffer } },
-    { binding: 1, resource: { buffer: base_vertices_buffer } },
-    { binding: 2, resource: { buffer: base_vertex_offset_buffer } },
-    { binding: 3, resource: { buffer: base_vertex_valence_buffer } },
-    { binding: 4, resource: { buffer: base_vertex_index_buffer } },
+    { binding: 0, resource: { buffer: verticesBuffer } },
+    { binding: 1, resource: { buffer: baseVerticesBuffer } },
+    { binding: 2, resource: { buffer: baseVertexOffsetBuffer } },
+    { binding: 3, resource: { buffer: baseVertexValenceBuffer } },
+    { binding: 4, resource: { buffer: baseVertexIndexBuffer } },
   ],
 });
 
-const facet_normals_bind_group = device.createBindGroup({
+const facetNormalsBindGroup = device.createBindGroup({
   label: "bindGroup for computing facet normals",
-  layout: facet_normals_pipeline.getBindGroupLayout(0),
+  layout: facetNormalsPipeline.getBindGroupLayout(0),
   entries: [
-    { binding: 0, resource: { buffer: facet_normals_buffer } },
-    { binding: 1, resource: { buffer: vertices_buffer } },
-    { binding: 2, resource: { buffer: triangle_indices_buffer } },
+    { binding: 0, resource: { buffer: facetNormalsBuffer } },
+    { binding: 1, resource: { buffer: verticesBuffer } },
+    { binding: 2, resource: { buffer: triangleIndicesBuffer } },
   ],
 });
 
-const vertex_normals_bind_group = device.createBindGroup({
+const vertexNormalsBindGroup = device.createBindGroup({
   label: "bindGroup for computing vertex normals",
-  layout: vertex_normals_pipeline.getBindGroupLayout(0),
+  layout: vertexNormalsPipeline.getBindGroupLayout(0),
   entries: [
-    { binding: 0, resource: { buffer: vertex_normals_buffer } },
-    { binding: 1, resource: { buffer: facet_normals_buffer } },
-    { binding: 2, resource: { buffer: triangle_indices_buffer } },
+    { binding: 0, resource: { buffer: vertexNormalsBuffer } },
+    { binding: 1, resource: { buffer: facetNormalsBuffer } },
+    { binding: 2, resource: { buffer: triangleIndicesBuffer } },
   ],
 });
 
-const render_bind_group = device.createBindGroup({
+const renderBindGroup = device.createBindGroup({
   label: "bindGroup for rendering kernel",
-  layout: render_pipeline.getBindGroupLayout(0),
-  entries: [{ binding: 0, resource: { buffer: mvx_buffer } }],
+  layout: renderPipeline.getBindGroupLayout(0),
+  entries: [{ binding: 0, resource: { buffer: mvxBuffer } }],
 });
 
 const aspect = canvas.width / canvas.height;
-const projection_matrix = mat4.perspective((2 * Math.PI) / 5, aspect, 1, 100.0);
-const model_view_projection_matrix = mat4.create();
+const projectionMatrix = mat4.perspective((2 * Math.PI) / 5, aspect, 1, 100.0);
+const modelviewProjectionMatrix = mat4.create();
 
-function get_transformation_matrix() {
+function getTransformationMatrix() {
   /* this view matrix simply does some time-dependent rotation */
   /* of course adding camera control would be better */
-  const view_matrix = mat4.identity();
+  const viewMatrix = mat4.identity();
   let now = uni.views.time[0] * uni.views.ROTATE_CAMERA_SPEED[0];
-  mat4.translate(view_matrix, vec3.fromValues(0, 0, -3), view_matrix);
-  mat4.rotateZ(view_matrix, now, view_matrix);
-  mat4.rotateY(view_matrix, now, view_matrix);
-  mat4.rotateX(view_matrix, now, view_matrix);
-  mat4.multiply(projection_matrix, view_matrix, model_view_projection_matrix);
-  return model_view_projection_matrix;
+  mat4.translate(viewMatrix, vec3.fromValues(0, 0, -3), viewMatrix);
+  mat4.rotateZ(viewMatrix, now, viewMatrix);
+  mat4.rotateY(viewMatrix, now, viewMatrix);
+  mat4.rotateX(viewMatrix, now, viewMatrix);
+  mat4.multiply(projectionMatrix, viewMatrix, modelviewProjectionMatrix);
+  return modelviewProjectionMatrix;
 }
 
 /** there are a TON of things in this frame() call that
@@ -858,15 +857,15 @@ async function frame() {
    * in the pane (also time is here)
    * (2) Transformation matrix, since it changes every frame
    */
-  device.queue.writeBuffer(uniforms_buffer, 0, uni.arrayBuffer);
+  device.queue.writeBuffer(uniformsBuffer, 0, uni.arrayBuffer);
 
-  const transformation_matrix = get_transformation_matrix();
+  const transformationMatrix = getTransformationMatrix();
   device.queue.writeBuffer(
-    mvx_buffer,
+    mvxBuffer,
     0,
-    transformation_matrix.buffer,
-    transformation_matrix.byteOffset,
-    transformation_matrix.byteLength
+    transformationMatrix.buffer,
+    transformationMatrix.byteOffset,
+    transformationMatrix.byteLength
   );
 
   // Encode commands to do the computation
@@ -875,91 +874,87 @@ async function frame() {
       "overall computation (perturb, face, edge, vertex, normals) + graphics encoder",
   });
 
-  const perturb_pass = encoder.beginComputePass({
+  const perturbPass = encoder.beginComputePass({
     label: "perturb input vertices kernel compute pass",
   });
-  perturb_pass.setPipeline(perturb_pipeline);
-  perturb_pass.setBindGroup(0, perturb_bind_group);
-  perturb_pass.dispatchWorkgroups(
-    Math.ceil(mesh.level_count[0].v / WORKGROUP_SIZE)
+  perturbPass.setPipeline(perturbPipeline);
+  perturbPass.setBindGroup(0, perturbBindGroup);
+  perturbPass.dispatchWorkgroups(
+    Math.ceil(mesh.levelCount[0].v / WORKGROUP_SIZE)
   );
-  perturb_pass.end();
+  perturbPass.end();
 
-  const face_pass = encoder.beginComputePass({
+  const facePass = encoder.beginComputePass({
     label: "face kernel compute pass",
   });
-  face_pass.setPipeline(face_pipeline);
-  face_pass.setBindGroup(0, face_bind_group);
-  face_pass.dispatchWorkgroups(
-    Math.ceil(mesh.level_count[1].f / WORKGROUP_SIZE)
-  );
-  face_pass.end();
+  facePass.setPipeline(facePipeline);
+  facePass.setBindGroup(0, faceBindGroup);
+  facePass.dispatchWorkgroups(Math.ceil(mesh.levelCount[1].f / WORKGROUP_SIZE));
+  facePass.end();
 
-  const edge_pass = encoder.beginComputePass({
+  const edgePass = encoder.beginComputePass({
     label: "edge kernel compute pass",
   });
-  edge_pass.setPipeline(edge_pipeline);
-  edge_pass.setBindGroup(0, edge_bind_group);
-  edge_pass.dispatchWorkgroups(
-    Math.ceil(mesh.level_count[1].e / WORKGROUP_SIZE)
-  );
-  edge_pass.end();
+  edgePass.setPipeline(edgePipeline);
+  edgePass.setBindGroup(0, edgeBindGroup);
+  edgePass.dispatchWorkgroups(Math.ceil(mesh.levelCount[1].e / WORKGROUP_SIZE));
+  edgePass.end();
 
-  const vertex_pass = encoder.beginComputePass({
+  const vertexPass = encoder.beginComputePass({
     label: "vertex kernel compute pass",
   });
-  vertex_pass.setPipeline(vertex_pipeline);
-  vertex_pass.setBindGroup(0, vertex_bind_group);
-  vertex_pass.dispatchWorkgroups(
-    Math.ceil(mesh.level_count[1].v / WORKGROUP_SIZE)
+  vertexPass.setPipeline(vertexPipeline);
+  vertexPass.setBindGroup(0, vertexBindGroup);
+  vertexPass.dispatchWorkgroups(
+    Math.ceil(mesh.levelCount[1].v / WORKGROUP_SIZE)
   );
-  vertex_pass.end();
+  vertexPass.end();
 
-  const facet_normals_pass = timing_helper.beginComputePass(encoder, {
+  const facetNormalsPass = timingHelper.beginComputePass(encoder, {
     label: "facet normals compute pass",
   });
-  facet_normals_pass.setPipeline(facet_normals_pipeline);
-  facet_normals_pass.setBindGroup(0, facet_normals_bind_group);
-  facet_normals_pass.dispatchWorkgroups(
-    Math.ceil((mesh.level_count[0].t + mesh.level_count[1].t) / WORKGROUP_SIZE)
+  facetNormalsPass.setPipeline(facetNormalsPipeline);
+  facetNormalsPass.setBindGroup(0, facetNormalsBindGroup);
+  facetNormalsPass.dispatchWorkgroups(
+    Math.ceil((mesh.levelCount[0].t + mesh.levelCount[1].t) / WORKGROUP_SIZE)
   );
-  facet_normals_pass.end();
+  facetNormalsPass.end();
 
-  const vertex_normals_pass = encoder.beginComputePass({
+  const vertexNormalsPass = encoder.beginComputePass({
     label: "vertex normals compute pass",
   });
-  vertex_normals_pass.setPipeline(vertex_normals_pipeline);
-  vertex_normals_pass.setBindGroup(0, vertex_normals_bind_group);
-  vertex_normals_pass.dispatchWorkgroups(
-    Math.ceil(vertices_size / WORKGROUP_SIZE)
+  vertexNormalsPass.setPipeline(vertexNormalsPipeline);
+  vertexNormalsPass.setBindGroup(0, vertexNormalsBindGroup);
+  vertexNormalsPass.dispatchWorkgroups(
+    Math.ceil(verticesSize / WORKGROUP_SIZE)
   );
-  vertex_normals_pass.end();
+  vertexNormalsPass.end();
 
   // Encode a command to copy the results to a mappable buffer.
   // this is (from, to)
   encoder.copyBufferToBuffer(
-    vertices_buffer,
+    verticesBuffer,
     0,
-    mappable_vertices_result_buffer,
+    mappableVerticesResultBuffer,
     0,
-    mappable_vertices_result_buffer.size
+    mappableVerticesResultBuffer.size
   );
   encoder.copyBufferToBuffer(
-    facet_normals_buffer,
+    facetNormalsBuffer,
     0,
-    mappable_facet_normals_result_buffer,
+    mappableFacetNormalsResultBuffer,
     0,
-    mappable_facet_normals_result_buffer.size
+    mappableFacetNormalsResultBuffer.size
   );
   encoder.copyBufferToBuffer(
-    vertex_normals_buffer,
+    vertexNormalsBuffer,
     0,
-    mappable_vertex_normals_result_buffer,
+    mappableVertexNormalsResultBuffer,
     0,
-    mappable_vertex_normals_result_buffer.size
+    mappableVertexNormalsResultBuffer.size
   );
 
-  const render_pass = encoder.beginRenderPass({
+  const renderPass = encoder.beginRenderPass({
     colorAttachments: [
       {
         view: context.getCurrentTexture().createView(),
@@ -969,7 +964,7 @@ async function frame() {
       },
     ],
     depthStencilAttachment: {
-      view: depth_texture.createView(),
+      view: depthTexture.createView(),
 
       depthClearValue: 1.0,
       depthLoadOp: "clear",
@@ -978,64 +973,64 @@ async function frame() {
   });
 
   // Now render those tris.
-  render_pass.setPipeline(render_pipeline);
-  render_pass.setBindGroup(0, render_bind_group);
-  render_pass.setVertexBuffer(0, vertices_buffer);
-  let start_idx = -1;
-  let end_idx = -1;
+  renderPass.setPipeline(renderPipeline);
+  renderPass.setBindGroup(0, renderBindGroup);
+  renderPass.setVertexBuffer(0, verticesBuffer);
+  let startIdx = -1;
+  let endIdx = -1;
   const now = uni.views.time[0];
 
-  render_pass.setIndexBuffer(triangle_indices_buffer, "uint32");
+  renderPass.setIndexBuffer(triangleIndicesBuffer, "uint32");
   // next line switches every TOGGLE_DURATION frames
   // switch ((now / uni.views.TOGGLE_DURATION) & 1) {
-  // instead switch explicitly on subdiv_level
+  // instead switch explicitly on subdivLevel
   // clearly this math can be much much simpler
-  switch (uni.views.subdiv_level[0]) {
-    case 0 /* draws tris [0, base_triangles_count) */:
-      start_idx = 0;
-      end_idx = mesh.level_count[0].t * 3;
+  switch (uni.views.subdivLevel[0]) {
+    case 0 /* draws tris [0, baseTrianglesCount) */:
+      startIdx = 0;
+      endIdx = mesh.levelCount[0].t * 3;
       break;
-    case 1 /* draws tris [base_triangles_count, base + subdiv counts) */:
-      start_idx = mesh.level_count[0].t * 3;
-      end_idx = (mesh.level_count[0].t + mesh.level_count[1].t) * 3;
+    case 1 /* draws tris [baseTrianglesCount, base + subdiv counts) */:
+      startIdx = mesh.levelCount[0].t * 3;
+      endIdx = (mesh.levelCount[0].t + mesh.levelCount[1].t) * 3;
       break;
   }
-  render_pass.drawIndexed(
-    end_idx - start_idx /* count */,
+  renderPass.drawIndexed(
+    endIdx - startIdx /* count */,
     1 /* instance */,
-    start_idx /* start */
+    startIdx /* start */
   );
 
   // End the render pass and submit the command buffer
-  render_pass.end();
+  renderPass.end();
 
   // Finish encoding and submit the commands
-  const command_buffer = encoder.finish();
-  device.queue.submit([command_buffer]);
+  const commandBuffer = encoder.finish();
+  device.queue.submit([commandBuffer]);
 
   // Read the results
-  await mappable_vertices_result_buffer.mapAsync(GPUMapMode.READ);
-  const vertices_result = new Float32Array(
-    mappable_vertices_result_buffer.getMappedRange().slice()
+  await mappableVerticesResultBuffer.mapAsync(GPUMapMode.READ);
+  const verticesResult = new Float32Array(
+    mappableVerticesResultBuffer.getMappedRange().slice()
   );
-  mappable_vertices_result_buffer.unmap();
-  await mappable_facet_normals_result_buffer.mapAsync(GPUMapMode.READ);
-  const facet_normals_result = new Float32Array(
-    mappable_facet_normals_result_buffer.getMappedRange().slice()
+  mappableVerticesResultBuffer.unmap();
+  await mappableFacetNormalsResultBuffer.mapAsync(GPUMapMode.READ);
+  const facetNormalsResult = new Float32Array(
+    mappableFacetNormalsResultBuffer.getMappedRange().slice()
   );
-  mappable_facet_normals_result_buffer.unmap();
-  await mappable_vertex_normals_result_buffer.mapAsync(GPUMapMode.READ);
-  const vertex_normals_result = new Float32Array(
-    mappable_vertex_normals_result_buffer.getMappedRange().slice()
+  mappableFacetNormalsResultBuffer.unmap();
+  await mappableVertexNormalsResultBuffer.mapAsync(GPUMapMode.READ);
+  const vertexNormalsResult = new Float32Array(
+    mappableVertexNormalsResultBuffer.getMappedRange().slice()
   );
-  mappable_vertex_normals_result_buffer.unmap();
+  mappableVertexNormalsResultBuffer.unmap();
 
   /* is this correct for getting timing info? */
-  timing_helper.getResult().then((res) => {
+  timingHelper.getResult().then((res) => {
     // console.log("timing helper result", res);
   });
 
-  // console.log("vertex buffer", vertices_result);
+  // console.log("vertex buffer", verticesResult);
   // console.log("time", uni.views.time[0]);
   uni.views.time[0] = uni.views.time[0] + uni.views.timestep[0];
   requestAnimationFrame(frame);

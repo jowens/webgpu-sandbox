@@ -35,22 +35,22 @@ class SubdivMesh {
     /* everything prefixed with "this." is a data structure that will go to the GPU */
     /* everything else is internal-only and will not be externally visible */
     this.vertices = []; // why can't I do new Float32Array?
-    this.vertices_reset = [];
+    this.verticesReset = [];
     this.faces = []; // indexed per vertex
     this.triangles = [];
-    this.face_valence = [];
-    this.face_offset = [];
+    this.faceValence = [];
+    this.faceOffset = [];
     this.edges = [];
-    this.base_vertices = [];
-    this.vertex_offset = [];
-    this.vertex_valence = [];
-    this.vertex_index = [];
-    const vertex_size = 4; // # elements per vertex
-    const initial_vertex_count = verticesIn.length;
-    this.level_count = [new Level(0, 0, initial_vertex_count, 0)];
-    this.level_base_ptr = [new Level(0, 0, 0, -1)];
-    this.scale_input = true;
-    this.largest_input = 0.0;
+    this.baseVertices = [];
+    this.vertexOffset = [];
+    this.vertexValence = [];
+    this.vertexIndex = [];
+    const vertexSize = 4; // # elements per vertex
+    const initialVertexCount = verticesIn.length;
+    this.levelCount = [new Level(0, 0, initialVertexCount, 0)];
+    this.levelBasePtr = [new Level(0, 0, 0, -1)];
+    this.scaleInput = true;
+    this.largestInput = 0.0;
     const level = 1; // will loop through levels later
     // OBJ stores faces in CCW order
     // The OBJ (or .OBJ) file format stores vertices in a counterclockwise order by default. This means that if the vertices are ordered counterclockwise around a face, both the face and the normal will point toward the viewer. If the vertices are ordered clockwise, both will point away from the viewer.
@@ -63,33 +63,33 @@ class SubdivMesh {
     //   where v# is the other end of an edge connecting v->v#
     //   and f# is the face to the left of v->v#
     const vertexNeighborsMap = new Map();
-    for (let i = 0; i < this.level_count[0].v; i++) {
+    for (let i = 0; i < this.levelCount[0].v; i++) {
       this.vertices.push(
         verticesIn[i].x,
         verticesIn[i].y,
         verticesIn[i].z,
         1.0
       );
-      this.largest_input = Math.abs(
+      this.largestInput = Math.abs(
         Math.max(
           Math.abs(verticesIn[i].x),
           Math.abs(verticesIn[i].y),
           Math.abs(verticesIn[i].z),
-          this.largest_input
+          this.largestInput
         )
       );
       vertexNeighborsMap.set(i, []);
     }
-    if (this.scale_input) {
-      for (let i = 0; i < this.level_count[0].v; i++) {
-        this.vertices[i * vertex_size + 0] /= this.largest_input;
-        this.vertices[i * vertex_size + 1] /= this.largest_input;
-        this.vertices[i * vertex_size + 2] /= this.largest_input;
+    if (this.scaleInput) {
+      for (let i = 0; i < this.levelCount[0].v; i++) {
+        this.vertices[i * vertexSize + 0] /= this.largestInput;
+        this.vertices[i * vertexSize + 1] /= this.largestInput;
+        this.vertices[i * vertexSize + 2] /= this.largestInput;
       }
     }
     /* cleanup, get rid of negative zeroes */
     this.vertices = this.vertices.map((num) => (num == -0 ? 0 : num));
-    this.vertices_reset = this.vertices.slice();
+    this.verticesReset = this.vertices.slice();
 
     /** calculating these offsets and lengths is a pain,
      * because we really have to walk the entire input data
@@ -107,29 +107,29 @@ class SubdivMesh {
      * of the level calculation that just compute all the
      * counts/offsets
      */
-    this.level_count.push(
+    this.levelCount.push(
       new Level(
         facesIn.length,
-        facesIn.length + initial_vertex_count - 2,
-        initial_vertex_count,
+        facesIn.length + initialVertexCount - 2,
+        initialVertexCount,
         0
       )
     );
-    this.level_base_ptr.push(
+    this.levelBasePtr.push(
       new Level(
-        initial_vertex_count,
-        initial_vertex_count + this.level_count[level].f,
-        initial_vertex_count +
-          this.level_count[level].f +
-          this.level_count[level].e,
+        initialVertexCount,
+        initialVertexCount + this.levelCount[level].f,
+        initialVertexCount +
+          this.levelCount[level].f +
+          this.levelCount[level].e,
         -1
       )
     );
 
-    console.log("Counts:   ", this.level_count);
-    console.log("Base ptr: ", this.level_base_ptr);
+    console.log("Counts:   ", this.levelCount);
+    console.log("Base ptr: ", this.levelBasePtr);
 
-    let edgePointID = this.level_base_ptr[1].e;
+    let edgePointID = this.levelBasePtr[1].e;
     // edgeToFace: [v_start,v_end] -> face on left
     const edgeToFace = new Map();
     // edgePointID: [v_start,v_end] -> edgePointID
@@ -141,17 +141,17 @@ class SubdivMesh {
      */
 
     for (
-      let i = 0, face_offset = 0, f_points_ptr = this.level_base_ptr[level].f;
+      let i = 0, faceOffset = 0, fPointsPtr = this.levelBasePtr[level].f;
       i < facesIn.length;
-      i++, f_points_ptr++
+      i++, fPointsPtr++
     ) {
       // i indexes the face from the input file
-      // face_offset indexes individual vertices within the faces
+      // faceOffset indexes individual vertices within the faces
       //   in the input file
-      // f_points_ptr indexes into the output vertex array
-      this.face_offset.push(face_offset);
-      this.face_valence.push(facesIn[i].vertices.length);
-      face_offset += facesIn[i].vertices.length;
+      // fPointsPtr indexes into the output vertex array
+      this.faceOffset.push(faceOffset);
+      this.faceValence.push(facesIn[i].vertices.length);
+      faceOffset += facesIn[i].vertices.length;
       const thisFacePtr = this.faces.length;
       for (let j = 0; j < facesIn[i].vertices.length; j++) {
         // here is where we do the 1-indexed to 0-indexed conversion
@@ -167,7 +167,7 @@ class SubdivMesh {
             this.faces.at(-2),
             this.faces.at(-1)
           );
-          this.level_count[0].t += 1;
+          this.levelCount[0].t += 1;
           break;
         case 4: // face is a quad
           this.triangles.push(
@@ -178,7 +178,7 @@ class SubdivMesh {
             this.faces.at(-2),
             this.faces.at(-1)
           );
-          this.level_count[0].t += 2;
+          this.levelCount[0].t += 2;
           break;
         default:
           console.log(
@@ -188,20 +188,20 @@ class SubdivMesh {
       }
       // same loop through vertices in this face,
       // but record edges this time
-      const v_base = thisFacePtr;
+      const vBase = thisFacePtr;
       for (let j = 0; j < facesIn[i].vertices.length; j++) {
-        const start = v_base + j;
+        const start = vBase + j;
         let end = start + 1;
         if (end >= this.faces.length) {
           // wraparound, last vertex <-> first one
-          end = v_base;
+          end = vBase;
         }
         const edge = edgeToKey(this.faces[start], this.faces[end]);
         const edgeRev = edgeToKey(this.faces[end], this.faces[start]);
         if (edgeToFace.has(edge)) {
           console.log(`ERROR: edge ${edge} already in edgeToFace`);
         }
-        edgeToFace.set(edge, f_points_ptr);
+        edgeToFace.set(edge, fPointsPtr);
         /**  in a manifold mesh, each edge will be set twice, so it's
          *   OK if it's already set; but if it sets here, it better set twice */
         if (edgeToEdgeID.has(edge) ^ edgeToEdgeID.has(edgeRev)) {
@@ -217,20 +217,20 @@ class SubdivMesh {
     }
 
     // all faces have been ingested, let's subdivide!
-    // XXX WRONG probably want to set v_base smarter than 0
+    // XXX WRONG probably want to set vBase smarter than 0
     for (
-      let v_base = 0, i = 0, f_points_ptr = this.level_base_ptr[level].f;
+      let vBase = 0, i = 0, fPointsPtr = this.levelBasePtr[level].f;
       i < facesIn.length;
-      v_base += facesIn[i].vertices.length, i++, f_points_ptr++
+      vBase += facesIn[i].vertices.length, i++, fPointsPtr++
     ) {
       // to make nomenclature easier, let's have tiny functions v and e
       // they have to be arrow functions to inherit "this" from the surrounding scope
       const v = (idx) => {
-        return this.level_base_ptr[level].v + this.faces[v_base + idx];
+        return this.levelBasePtr[level].v + this.faces[vBase + idx];
       };
       const e = (v0, v1) => {
         return edgeToEdgeID.get(
-          edgeToKey(this.faces[v_base + v0], this.faces[v_base + v1])
+          edgeToKey(this.faces[vBase + v0], this.faces[vBase + v1])
         );
       };
       switch (facesIn[i].vertices.length) {
@@ -238,35 +238,35 @@ class SubdivMesh {
           // build quads and triangles!
           // prettier-ignore
           this.faces.push( // three quads
-            f_points_ptr, e(0, 2), v(0), e(0, 1),
-            f_points_ptr, e(0, 1), v(1), e(1, 2),
-            f_points_ptr, e(1, 2), v(2), e(0, 2)
+            fPointsPtr, e(0, 2), v(0), e(0, 1),
+            fPointsPtr, e(0, 1), v(1), e(1, 2),
+            fPointsPtr, e(1, 2), v(2), e(0, 2)
           );
           // prettier-ignore
           this.triangles.push(
             /** TODO: There is a right way to subdivide quads->tris
              * need to compare both diagonals & pick the better one
              * especially if this is concave */
-            f_points_ptr, e(0, 2), v(0),
-            f_points_ptr, v(0), e(0, 1),
-            f_points_ptr, e(0, 1), v(1),
-            f_points_ptr, v(1), e(1, 2),
-            f_points_ptr, e(1, 2), v(2),
-            f_points_ptr, v(2), e(0, 2),
+            fPointsPtr, e(0, 2), v(0),
+            fPointsPtr, v(0), e(0, 1),
+            fPointsPtr, e(0, 1), v(1),
+            fPointsPtr, v(1), e(1, 2),
+            fPointsPtr, e(1, 2), v(2),
+            fPointsPtr, v(2), e(0, 2),
           );
-          this.level_count[level].t += 6;
+          this.levelCount[level].t += 6;
           break;
         case 4: // quad
-          //  `Subdividing quad with vertices ${this.faces[v_base]}, ${
-          //    this.faces[v_base + 1]
-          //  }, ${this.faces[v_base + 2]}, ${this.faces[v_base + 3]}`
+          //  `Subdividing quad with vertices ${this.faces[vBase]}, ${
+          //    this.faces[vBase + 1]
+          //  }, ${this.faces[vBase + 2]}, ${this.faces[vBase + 3]}`
           // prettier-ignore
           this.faces.push( // four quads
             /* TODO: Am I picking the right quads to subdivide? It's an octagon */
-            f_points_ptr, v(0), e(0, 1), v(1),
-            f_points_ptr, v(1), e(1, 2), v(2),
-            f_points_ptr, v(2), e(2, 3), v(3),
-            f_points_ptr, v(3), e(3, 0), v(0),
+            fPointsPtr, v(0), e(0, 1), v(1),
+            fPointsPtr, v(1), e(1, 2), v(2),
+            fPointsPtr, v(2), e(2, 3), v(3),
+            fPointsPtr, v(3), e(3, 0), v(0),
           );
           // prettier-ignore
           this.triangles.push(
@@ -274,16 +274,16 @@ class SubdivMesh {
              * need to compare both diagonals & pick the better one
              * especially if this is concave */
             /* TODO: Am I picking the right quads to subdivide? It's an octagon */
-            f_points_ptr, v(0), e(0, 1),
-            f_points_ptr, e(0, 1), v(1),
-            f_points_ptr, v(1), e(1, 2),
-            f_points_ptr, e(1, 2), v(2),
-            f_points_ptr, v(2), e(2, 3),
-            f_points_ptr, e(2, 3), v(3),
-            f_points_ptr, v(3), e(3, 0),
-            f_points_ptr, e(3, 0), v(0),
+            fPointsPtr, v(0), e(0, 1),
+            fPointsPtr, e(0, 1), v(1),
+            fPointsPtr, v(1), e(1, 2),
+            fPointsPtr, e(1, 2), v(2),
+            fPointsPtr, v(2), e(2, 3),
+            fPointsPtr, e(2, 3), v(3),
+            fPointsPtr, v(3), e(3, 0),
+            fPointsPtr, e(3, 0), v(0),
           );
-          this.level_count[level].t += 8;
+          this.levelCount[level].t += 8;
           break;
         default:
           console.log(
@@ -329,14 +329,14 @@ class SubdivMesh {
       }
     });
 
-    // now we populate base_vertices
-    var vertex_offset = 0;
+    // now we populate baseVertices
+    var vertexOffset = 0;
     vertexNeighborsMap.forEach((neighbors, vertex) => {
-      this.vertex_index.push(vertex);
-      this.base_vertices.push(neighbors);
-      this.vertex_valence.push(neighbors.length / 2);
-      this.vertex_offset.push(vertex_offset);
-      vertex_offset += neighbors.length;
+      this.vertexIndex.push(vertex);
+      this.baseVertices.push(neighbors);
+      this.vertexValence.push(neighbors.length / 2);
+      this.vertexOffset.push(vertexOffset);
+      vertexOffset += neighbors.length;
     });
   }
 }
