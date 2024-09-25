@@ -1003,18 +1003,14 @@
       const model_view_projection_matrix = mat4.create();
 
       function get_transformation_matrix() {
+        /* this view matrix simply does some time-dependent rotation */
+        /* of course adding camera control would be better */
         const view_matrix = mat4.identity();
         let now = uni.views.time[0] * uni.views.ROTATE_CAMERA_SPEED[0];
         mat4.translate(view_matrix, vec3.fromValues(0, 0, -3), view_matrix);
         mat4.rotateZ(view_matrix, now, view_matrix);
         mat4.rotateY(view_matrix, now, view_matrix);
         mat4.rotateX(view_matrix, now, view_matrix);
-        //mat4.rotate(
-        // view_matrix,
-        //vec3.fromValues(Math.sin(now), Math.cos(now), 0),
-        //1,
-        //view_matrix
-        //);
         mat4.multiply(
           projection_matrix,
           view_matrix,
@@ -1038,7 +1034,7 @@
         // Encode commands to do the computation
         const encoder = device.createCommandEncoder({
           label:
-            "overall computation (perturb, face, edge, vertex) + graphics encoder",
+            "overall computation (perturb, face, edge, vertex, normals) + graphics encoder",
         });
 
         const perturb_pass = encoder.beginComputePass({
@@ -1088,7 +1084,7 @@
         facet_normals_pass.setBindGroup(0, facet_normals_bind_group);
         facet_normals_pass.dispatchWorkgroups(
           Math.ceil(
-            (base_triangles_count + subdiv_1_triangles_count) / WORKGROUP_SIZE
+            (mesh.level_count[0].t + mesh.level_count[1].t) / WORKGROUP_SIZE
           )
         );
         facet_normals_pass.end();
