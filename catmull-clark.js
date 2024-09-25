@@ -874,61 +874,43 @@ async function frame() {
       "overall computation (perturb, face, edge, vertex, normals) + graphics encoder",
   });
 
-  const perturbPass = encoder.beginComputePass({
-    label: "perturb input vertices kernel compute pass",
+  const computePass = timingHelper.beginComputePass(encoder, {
+    label: "compute pass, all compute kernels",
   });
-  perturbPass.setPipeline(perturbPipeline);
-  perturbPass.setBindGroup(0, perturbBindGroup);
-  perturbPass.dispatchWorkgroups(
+  computePass.setPipeline(perturbPipeline);
+  computePass.setBindGroup(0, perturbBindGroup);
+  computePass.dispatchWorkgroups(
     Math.ceil(mesh.levelCount[0].v / WORKGROUP_SIZE)
   );
-  perturbPass.end();
 
-  const facePass = encoder.beginComputePass({
-    label: "face kernel compute pass",
-  });
-  facePass.setPipeline(facePipeline);
-  facePass.setBindGroup(0, faceBindGroup);
-  facePass.dispatchWorkgroups(Math.ceil(mesh.levelCount[1].f / WORKGROUP_SIZE));
-  facePass.end();
+  computePass.setPipeline(facePipeline);
+  computePass.setBindGroup(0, faceBindGroup);
+  computePass.dispatchWorkgroups(
+    Math.ceil(mesh.levelCount[1].f / WORKGROUP_SIZE)
+  );
 
-  const edgePass = encoder.beginComputePass({
-    label: "edge kernel compute pass",
-  });
-  edgePass.setPipeline(edgePipeline);
-  edgePass.setBindGroup(0, edgeBindGroup);
-  edgePass.dispatchWorkgroups(Math.ceil(mesh.levelCount[1].e / WORKGROUP_SIZE));
-  edgePass.end();
+  computePass.setPipeline(edgePipeline);
+  computePass.setBindGroup(0, edgeBindGroup);
+  computePass.dispatchWorkgroups(
+    Math.ceil(mesh.levelCount[1].e / WORKGROUP_SIZE)
+  );
 
-  const vertexPass = encoder.beginComputePass({
-    label: "vertex kernel compute pass",
-  });
-  vertexPass.setPipeline(vertexPipeline);
-  vertexPass.setBindGroup(0, vertexBindGroup);
-  vertexPass.dispatchWorkgroups(
+  computePass.setPipeline(vertexPipeline);
+  computePass.setBindGroup(0, vertexBindGroup);
+  computePass.dispatchWorkgroups(
     Math.ceil(mesh.levelCount[1].v / WORKGROUP_SIZE)
   );
-  vertexPass.end();
 
-  const facetNormalsPass = timingHelper.beginComputePass(encoder, {
-    label: "facet normals compute pass",
-  });
-  facetNormalsPass.setPipeline(facetNormalsPipeline);
-  facetNormalsPass.setBindGroup(0, facetNormalsBindGroup);
-  facetNormalsPass.dispatchWorkgroups(
+  computePass.setPipeline(facetNormalsPipeline);
+  computePass.setBindGroup(0, facetNormalsBindGroup);
+  computePass.dispatchWorkgroups(
     Math.ceil((mesh.levelCount[0].t + mesh.levelCount[1].t) / WORKGROUP_SIZE)
   );
-  facetNormalsPass.end();
 
-  const vertexNormalsPass = encoder.beginComputePass({
-    label: "vertex normals compute pass",
-  });
-  vertexNormalsPass.setPipeline(vertexNormalsPipeline);
-  vertexNormalsPass.setBindGroup(0, vertexNormalsBindGroup);
-  vertexNormalsPass.dispatchWorkgroups(
-    Math.ceil(verticesSize / WORKGROUP_SIZE)
-  );
-  vertexNormalsPass.end();
+  computePass.setPipeline(vertexNormalsPipeline);
+  computePass.setBindGroup(0, vertexNormalsBindGroup);
+  computePass.dispatchWorkgroups(Math.ceil(verticesSize / WORKGROUP_SIZE));
+  computePass.end();
 
   // Encode a command to copy the results to a mappable buffer.
   // this is (from, to)
