@@ -160,32 +160,22 @@ class SubdivMesh {
         // file, here's where we'd record them
         this.faces.push(facesIn[i].vertices[j].vertexIndex - 1);
       }
-      switch (facesIn[i].vertices.length) {
-        case 3: // face is a triangle
-          this.triangles.push(
-            this.faces.at(-3),
-            this.faces.at(-2),
-            this.faces.at(-1)
-          );
-          this.levelCount[0].t += 1;
-          break;
-        case 4: // face is a quad
-          this.triangles.push(
-            this.faces.at(-4),
-            this.faces.at(-3),
-            this.faces.at(-2),
-            this.faces.at(-4),
-            this.faces.at(-2),
-            this.faces.at(-1)
-          );
-          this.levelCount[0].t += 2;
-          break;
-        default:
-          console.log(
-            `ERROR: Face ${i} has valence ${facesIn[i].vertices.length}, can only support 3 and 4 currently`
-          );
-          break;
+      /**
+       * Turn those faces into triangles; support arbitrary valence.
+       * There are probably smarter ways to go face->triangles
+       */
+      const valence = facesIn[i].vertices.length;
+      for (let j = 2 - valence; j != 0; j++) {
+        this.triangles.push(
+          this.faces.at(-valence),
+          this.faces.at(j - 1),
+          this.faces.at(j)
+          /* triangles: (-3, -2, -1)
+           * quads: (-4, -3, -2) (-4, -2, -1) */
+        );
       }
+      this.levelCount[0].t += valence - 2;
+
       // same loop through vertices in this face,
       // but record edges this time
       const vBase = thisFacePtr;
