@@ -47,7 +47,7 @@ const uniformsCode = /* wgsl */ `
     WIGGLE_SPEED: f32,
     subdivLevel: u32,
     @align(16) levelCount: array<Level, MAX_LEVEL>,
-    levelBasePtr: array<Level, MAX_LEVEL>,
+    @align(16) levelBasePtr: array<Level, MAX_LEVEL>,
     time: f32,
     timestep: f32,
   };
@@ -198,6 +198,10 @@ const baseVertexValence = new Uint32Array(mesh.vertexValence);
 const baseVertexOffset = new Uint32Array(mesh.vertexOffset);
 const baseVertexIndex = new Uint32Array(mesh.vertexIndex);
 const baseVertices = new Uint32Array(mesh.baseVertices.flat());
+
+for (let j = 0; j <= mesh.maxLevel; j++) {
+  uni.views.levelCount[j] = mesh.levelCount[j];
+}
 
 const perturbInputVerticesModule = device.createShaderModule({
   label: "perturb input vertices module",
