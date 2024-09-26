@@ -308,7 +308,6 @@ const facePointsModule = device.createShaderModule({
  *                           vertices[edgeID + 2] + vertices[edgeID + 3])
  */
 
-console.log("edge pts write_ptr: ", mesh.levelBasePtr[1].e);
 const edgePointsModule = device.createShaderModule({
   label: "edge points module",
   code: /* wgsl */ `
@@ -377,7 +376,6 @@ const edgePointsModule = device.createShaderModule({
  *   newVertex[i] /= baseVertexValence[i]
  */
 
-console.log("vertex pts write_ptr: ", mesh.levelBasePtr[1].v);
 const vertexPointsModule = device.createShaderModule({
   label: "vertex points module",
   code: /* wgsl */ `
@@ -399,8 +397,8 @@ const vertexPointsModule = device.createShaderModule({
     @compute @workgroup_size(${WORKGROUP_SIZE}) fn vertexPointsKernel(
       @builtin(global_invocation_id) id: vec3u) {
         let i = id.x;
-        if (i < ${mesh.levelCount[1].v}) {
-          let out = i + ${mesh.levelBasePtr[1].v};
+        if (i < myUniforms.levelCount[1].v) {
+          let out = i + myUniforms.levelBasePtr[1].v;
           let valence = baseVertexValence[i];
           vertices[out] = vec3f(0,0,0);
           for (var j: u32 = baseVertexOffset[i]; j < baseVertexOffset[i] + 2 * baseVertexValence[i]; j++) {
@@ -817,7 +815,7 @@ const vertexBindGroup = device.createBindGroup({
   label: "bindGroup for vertex kernel",
   layout: vertexPipeline.getBindGroupLayout(0),
   entries: [
-    // { binding: 0, resource: { buffer: uniformsBuffer } },
+    { binding: 0, resource: { buffer: uniformsBuffer } },
     { binding: 1, resource: { buffer: verticesBuffer } },
     { binding: 2, resource: { buffer: baseVerticesBuffer } },
     { binding: 3, resource: { buffer: baseVertexOffsetBuffer } },
