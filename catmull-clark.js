@@ -201,6 +201,8 @@ const baseVertexOffset = new Uint32Array(mesh.vertexOffset);
 const baseVertexIndex = new Uint32Array(mesh.vertexIndex);
 const baseVertices = new Uint32Array(mesh.baseVertices.flat());
 
+// this can surely be cleaner
+// https://github.com/greggman/webgpu-utils/issues/11
 for (let j = 0; j <= mesh.maxLevel; j++) {
   uni.views.levelCount[j].f[0] = mesh.levelCount[j].f;
   uni.views.levelCount[j].e[0] = mesh.levelCount[j].e;
@@ -251,9 +253,7 @@ const perturbInputVerticesModule = device.createShaderModule({
  *     newFaces[i] += vertices[baseFaces[j]
  *   newFaces[i] /= baseFaceValence[i]
  */
-console.log("face pts write_ptr: ", mesh.levelBasePtr[1].f);
-console.log(uni);
-console.log(mesh.levelBasePtr, mesh.levelCount);
+
 const facePointsModule = device.createShaderModule({
   label: "face points module",
   code: /* wgsl */ `
@@ -279,7 +279,6 @@ const facePointsModule = device.createShaderModule({
       let i = id.x;
       if (i < myUniforms.levelCount[1].f) {
         let out = i +  myUniforms.levelBasePtr[1].f;
-        vertices[out] = vec3f(myUniforms.time);
         vertices[out] = vec3f(0,0,0);
         for (var j: u32 = baseFaceOffset[i]; j < baseFaceOffset[i] + baseFaceValence[i]; j++) {
           let faceVertex = baseFaces[j];
