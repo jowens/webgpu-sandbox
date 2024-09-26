@@ -36,23 +36,22 @@ const debug = urlParams.get("debug"); // string or undefined
 // Q: Is this the right way to do things or is it better to have different
 //   uniform structures for each kernel?
 const uniformsCode = /* wgsl */ `
-        const MAX_LEVEL = 10;
-        struct Level {
-          f: u32, e: u32, v: u32, t: u32,
-        };
-        struct MyUniforms {
-          ROTATE_CAMERA_SPEED: f32,
-          TOGGLE_DURATION: f32,
-          WIGGLE_MAGNITUDE: f32,
-          WIGGLE_SPEED: f32,
-          subdivLevel: u32,
-          @align(16) levelCount: array<Level, MAX_LEVEL>,
-          levelBasePtr: array<Level, MAX_LEVEL>,
-          time: f32,
-          timestep: f32,
-        };
-        @group(0) @binding(0) var<uniform> myUniforms: MyUniforms;
-      `;
+  const MAX_LEVEL = 10;
+  struct Level {
+    f: u32, e: u32, v: u32, t: u32,
+  };
+  struct MyUniforms {
+    ROTATE_CAMERA_SPEED: f32,
+    TOGGLE_DURATION: f32,
+    WIGGLE_MAGNITUDE: f32,
+    WIGGLE_SPEED: f32,
+    subdivLevel: u32,
+    @align(16) levelCount: array<Level, MAX_LEVEL>,
+    levelBasePtr: array<Level, MAX_LEVEL>,
+    time: f32,
+    timestep: f32,
+  };
+  @group(0) @binding(0) var<uniform> myUniforms: MyUniforms;`;
 /* why the @group/@binding? gman@:
  * "It's necessary for them to show up in defs.uniforms or defs.storages. You
  *  can use defs.structs to pull out a struct, separately from a group/binding (I think?)"
