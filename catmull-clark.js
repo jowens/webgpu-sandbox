@@ -211,11 +211,6 @@ for (let j = 0; j <= mesh.maxLevel; j++) {
   uni.views.levelBasePtr[j].v[0] = mesh.levelBasePtr[j].v;
   uni.views.levelBasePtr[j].t[0] = mesh.levelBasePtr[j].t;
 }
-//uni.set({
-// levelCount_f1: 3442,
-//  levelBasePtr_f1: 3618,
-//});
-//uni.views.levelCount_f1 = 3442;
 
 const perturbInputVerticesModule = device.createShaderModule({
   label: "perturb input vertices module",
@@ -282,11 +277,8 @@ const facePointsModule = device.createShaderModule({
     @compute @workgroup_size(${WORKGROUP_SIZE}) fn facePointsKernel(
       @builtin(global_invocation_id) id: vec3u) {
       let i = id.x;
-     //  if (i < ${mesh.levelCount[1].f}) {
-        /* TODO: exit if my index is larger than the size of the input */
-       // let out = i + ${mesh.levelBasePtr[1].f};
-      if (i < myUniforms.levelCount[1].f) {//  myUniforms.levelCount_f1) {// 3442){ //myUniforms.levelCount[1].f) {
-        let out = i +  myUniforms.levelBasePtr[1].f; // 3618;// myUniforms.levelBasePtr[1].f;
+      if (i < myUniforms.levelCount[1].f) {
+        let out = i +  myUniforms.levelBasePtr[1].f;
         vertices[out] = vec3f(myUniforms.time);
         vertices[out] = vec3f(0,0,0);
         for (var j: u32 = baseFaceOffset[i]; j < baseFaceOffset[i] + baseFaceValence[i]; j++) {
