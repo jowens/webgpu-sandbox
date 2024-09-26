@@ -51,6 +51,7 @@ class SubdivMesh {
     this.levelBasePtr = [new Level(0, 0, 0, -1)];
     this.scaleInput = true;
     this.largestInput = 0.0;
+    this.maxLevel = 1; // valid levels are <= maxLevel
     const level = 1; // will loop through levels later
     // OBJ stores faces in CCW order
     // The OBJ (or .OBJ) file format stores vertices in a counterclockwise order by default. This means that if the vertices are ordered counterclockwise around a face, both the face and the normal will point toward the viewer. If the vertices are ordered clockwise, both will point away from the viewer.

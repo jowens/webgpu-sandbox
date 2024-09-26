@@ -162,8 +162,9 @@ const objurl5 =
 // stanford-teapot
 const objurl6 =
   "https://gist.githubusercontent.com/jowens/5f7bc872317b5fd5f7d72827967f1c9d/raw/1f846ee3229297520dd855b199d21717e30af91b/stanford-teapot.obj";
+const objurl7 = "http://localhost:8000/meshes/ogre.obj";
 
-const mesh = await urlToMesh(objurl3);
+const mesh = await urlToMesh(objurl4);
 console.log(mesh);
 
 const verticesSize = mesh.levelBasePtr[1].v + mesh.levelCount[1].v;
@@ -243,41 +244,41 @@ console.log("face pts write_ptr: ", mesh.levelBasePtr[1].f);
 const facePointsModule = device.createShaderModule({
   label: "face points module",
   code: /* wgsl */ `
-                    /* output */
-                    @group(0) @binding(0) var<storage, read_write> verticesIn: array<vec3f>;
-                    /* input */
-                    @group(0) @binding(1) var<storage, read_write> verticesOut: array<vec3f>;
-                    @group(0) @binding(2) var<storage, read> baseFaces: array<u32>;
-                    @group(0) @binding(3) var<storage, read> baseFaceOffset: array<u32>;
-                    @group(0) @binding(4) var<storage, read> baseFaceValence: array<u32>;
+                                         /* input + output */
+                                         @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
+                                                 /* input */
+                                         @group(0) @binding(1) var<storage, read> baseFaces: array<u32>;
+                                         @group(0) @binding(2) var<storage, read> baseFaceOffset: array<u32>;
+                                         @group(0) @binding(3) var<storage, read> baseFaceValence: array<u32>;
 
-                    /** Niessner 2012:
-                      * "The face kernel requires two buffers: one index buffer, whose
-                      * entries are the vertex buffer indices for each vertex of the face; a
-                      * second buffer stores the valence of the face along with an offset
-                      * into the index buffer for the first vertex of each face."
-                      *
-                      * implementation above: "index buffer" is baseFaces
-                      *                       "valence of the face" is baseFaceValence
-                      *                       "offset into the index buffer" is baseFaceOffset
-                      */
+                                         /** Niessner 2012:
+                                           * "The face kernel requires two buffers: one index buffer, whose
+                                           * entries are the vertex buffer indices for each vertex of the face; a
+                                           * second buffer stores the valence of the face along with an offset
+                                           * into the index buffer for the first vertex of each face."
+                                           *
+                                           * implementation above: "index buffer" is baseFaces
+                                           *                       "valence of the face" is baseFaceValence
+                                           *                       "offset into the index buffer" is baseFaceOffset
+                                           */
 
-                    @compute @workgroup_size(${WORKGROUP_SIZE}) fn facePointsKernel(
-                      @builtin(global_invocation_id) id: vec3u) {
-                      let i = id.x;
-                      if (i < arrayLength(&verticesOut)) {
-                        /* TODO: exit if my index is larger than the size of the input */
+                                         @compute @workgroup_size(${WORKGROUP_SIZE}) fn facePointsKernel(
+                                           @builtin(global_invocation_id) id: vec3u) {
+                                           let i = id.x;
+                                           if (i < ${mesh.levelCount[1].f}) {
+                                             /* TODO: exit if my index is larger than the size of the input */
 
-                        verticesOut[i] = vec3f(0,0,0);
-                        for (var j: u32 = baseFaceOffset[i]; j < baseFaceOffset[i] + baseFaceValence[i]; j++) {
-                          let faceVertex = baseFaces[j];
-                          verticesOut[i] += verticesIn[faceVertex];
-                        }
-                        verticesOut[i] /= f32(baseFaceValence[i]);
-                      }
-                      // TODO: decide on vec3f or vec4f and set w if so
-                    }
-                  `,
+                                             let out = i + ${mesh.levelBasePtr[1].f};
+                                             vertices[out] = vec3f(0,0,0);
+                                             for (var j: u32 = baseFaceOffset[i]; j < baseFaceOffset[i] + baseFaceValence[i]; j++) {
+                                               let faceVertex = baseFaces[j];
+                                               vertices[out] += vertices[faceVertex];
+                                             }
+                                             vertices[out] /= f32(baseFaceValence[i]);
+                                           }
+                                           // TODO: decide on vec3f or vec4f and set w if so
+                                         }
+                                       `,
 });
 
 /** output vertices from face kernel, for debugging:
@@ -758,6 +759,13 @@ const mappableVertexNormalsResultBuffer = device.createBuffer({
 const bytesPerVertex = verticesObjectSize * 4;
 
 /** Set up bindGroups per compute kernel to tell the shader which buffers to use */
+/** I had hoped to do all verticesBuffer bindings as slices as below,
+ * but buffer alignment restrictions appear to make this impossible.
+ *   Offset (25568) of [Buffer "vertex buffer"] does not satisfy the minimum
+ *   BufferBindingType::Storage alignment (256).
+ * This particular bindGroup is OK because it's always at the beginning of
+ * verticesBuffer.
+ */
 const perturbBindGroup = device.createBindGroup({
   label: "bindGroup for perturb input vertices kernel",
   layout: perturbPipeline.getBindGroupLayout(0),
@@ -774,41 +782,16 @@ const perturbBindGroup = device.createBindGroup({
   ],
 });
 
-const faceBindGroup = [{}]; /* level 0 is empty */
-for (var level = 1; level <= mesh.maxLevel; level++) {
-  faceBindGroup.push(
-    device.createBindGroup({
-      label: `bindGroup for face kernel, level ${level}`,
-      layout: facePipeline.getBindGroupLayout(0),
-      entries: [
-        {
-          binding: 0,
-          resource: {
-            buffer: verticesBuffer,
-            offset: mesh.levelBasePtr[level].f * bytesPerVertex,
-            size: mesh.levelBasePtr[level].f * bytesPerVertex,
-          },
-        },
-        {
-          binding: 1,
-          resource: {
-            buffer: verticesBuffer,
-            offset: mesh.levelBasePtr[level - 1].v * bytesPerVertex,
-            size: mesh.levelBasePtr[level - 1].v * bytesPerVertex,
-          },
-        },
-        { binding: 2, resource: { buffer: baseFacesBuffer } },
-        { binding: 3, resource: { buffer: baseFaceOffsetBuffer } },
-        { binding: 4, resource: { buffer: baseFaceValenceBuffer } },
-      ],
-    })
-  );
-  console.log(perturbBindGroup);
-  console.log(faceBindGroup);
-  console.log(
-    `faceBindGroup[${level}]: ${faceBindGroup[level].entries[0]}, ${faceBindGroup[level].entries[1]}`
-  );
-}
+const faceBindGroup = device.createBindGroup({
+  label: `bindGroup for face kernel`,
+  layout: facePipeline.getBindGroupLayout(0),
+  entries: [
+    { binding: 0, resource: { buffer: verticesBuffer } },
+    { binding: 1, resource: { buffer: baseFacesBuffer } },
+    { binding: 2, resource: { buffer: baseFaceOffsetBuffer } },
+    { binding: 3, resource: { buffer: baseFaceValenceBuffer } },
+  ],
+});
 
 const edgeBindGroup = device.createBindGroup({
   label: "bindGroup for edge kernel",
@@ -914,7 +897,7 @@ async function frame() {
   );
 
   computePass.setPipeline(facePipeline);
-  computePass.setBindGroup(0, faceBindGroup[1]);
+  computePass.setBindGroup(0, faceBindGroup);
   computePass.dispatchWorkgroups(
     Math.ceil(mesh.levelCount[1].f / WORKGROUP_SIZE)
   );
