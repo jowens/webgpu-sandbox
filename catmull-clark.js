@@ -46,6 +46,8 @@ const uniformsCode = /* wgsl */ `
     WIGGLE_MAGNITUDE: f32,
     WIGGLE_SPEED: f32,
     subdivLevel: u32,
+    levelCount_f1: u32,
+    levelBasePtr_f1: u32,
     @align(16) levelCount: array<Level, MAX_LEVEL>,
     @align(16) levelBasePtr: array<Level, MAX_LEVEL>,
     time: f32,
@@ -200,8 +202,20 @@ const baseVertexIndex = new Uint32Array(mesh.vertexIndex);
 const baseVertices = new Uint32Array(mesh.baseVertices.flat());
 
 for (let j = 0; j <= mesh.maxLevel; j++) {
-  uni.views.levelCount[j] = mesh.levelCount[j];
+  uni.views.levelCount[j].f[0] = mesh.levelCount[j].f;
+  uni.views.levelCount[j].e[0] = mesh.levelCount[j].e;
+  uni.views.levelCount[j].v[0] = mesh.levelCount[j].v;
+  uni.views.levelCount[j].t[0] = mesh.levelCount[j].t;
+  uni.views.levelBasePtr[j].f[0] = mesh.levelBasePtr[j].f;
+  uni.views.levelBasePtr[j].e[0] = mesh.levelBasePtr[j].e;
+  uni.views.levelBasePtr[j].v[0] = mesh.levelBasePtr[j].v;
+  uni.views.levelBasePtr[j].t[0] = mesh.levelBasePtr[j].t;
 }
+//uni.set({
+// levelCount_f1: 3442,
+//  levelBasePtr_f1: 3618,
+//});
+//uni.views.levelCount_f1 = 3442;
 
 const perturbInputVerticesModule = device.createShaderModule({
   label: "perturb input vertices module",
@@ -243,15 +257,18 @@ const perturbInputVerticesModule = device.createShaderModule({
  *   newFaces[i] /= baseFaceValence[i]
  */
 console.log("face pts write_ptr: ", mesh.levelBasePtr[1].f);
+console.log(uni);
+console.log(mesh.levelBasePtr, mesh.levelCount);
 const facePointsModule = device.createShaderModule({
   label: "face points module",
   code: /* wgsl */ `
+    ${uniformsCode} /* this specifies @group(0) @binding(0) */
     /* input + output */
-    @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
+    @group(0) @binding(1) var<storage, read_write> vertices: array<vec3f>;
             /* input */
-    @group(0) @binding(1) var<storage, read> baseFaces: array<u32>;
-    @group(0) @binding(2) var<storage, read> baseFaceOffset: array<u32>;
-    @group(0) @binding(3) var<storage, read> baseFaceValence: array<u32>;
+    @group(0) @binding(2) var<storage, read> baseFaces: array<u32>;
+    @group(0) @binding(3) var<storage, read> baseFaceOffset: array<u32>;
+    @group(0) @binding(4) var<storage, read> baseFaceValence: array<u32>;
     /** Niessner 2012:
       * "The face kernel requires two buffers: one index buffer, whose
       * entries are the vertex buffer indices for each vertex of the face; a
@@ -265,9 +282,12 @@ const facePointsModule = device.createShaderModule({
     @compute @workgroup_size(${WORKGROUP_SIZE}) fn facePointsKernel(
       @builtin(global_invocation_id) id: vec3u) {
       let i = id.x;
-      if (i < ${mesh.levelCount[1].f}) {
+     //  if (i < ${mesh.levelCount[1].f}) {
         /* TODO: exit if my index is larger than the size of the input */
-        let out = i + ${mesh.levelBasePtr[1].f};
+       // let out = i + ${mesh.levelBasePtr[1].f};
+      if (i < myUniforms.levelCount[1].f) {//  myUniforms.levelCount_f1) {// 3442){ //myUniforms.levelCount[1].f) {
+        let out = i +  myUniforms.levelBasePtr[1].f; // 3618;// myUniforms.levelBasePtr[1].f;
+        vertices[out] = vec3f(myUniforms.time);
         vertices[out] = vec3f(0,0,0);
         for (var j: u32 = baseFaceOffset[i]; j < baseFaceOffset[i] + baseFaceValence[i]; j++) {
           let faceVertex = baseFaces[j];
@@ -301,10 +321,11 @@ console.log("edge pts write_ptr: ", mesh.levelBasePtr[1].e);
 const edgePointsModule = device.createShaderModule({
   label: "edge points module",
   code: /* wgsl */ `
+    ${uniformsCode} /* this specifies @group(0) @binding(0) */
     /* input + output */
-    @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
+    @group(0) @binding(1) var<storage, read_write> vertices: array<vec3f>;
     /* input */
-    @group(0) @binding(1) var<storage, read> baseEdges: array<vec4u>;
+    @group(0) @binding(2) var<storage, read> baseEdges: array<vec4u>;
 
     /** "Since a single (non-boundary) edge always has two incident faces and vertices,
      * the edge kernel needs a buffer for the indices of these entities."
@@ -369,13 +390,14 @@ console.log("vertex pts write_ptr: ", mesh.levelBasePtr[1].v);
 const vertexPointsModule = device.createShaderModule({
   label: "vertex points module",
   code: /* wgsl */ `
+    ${uniformsCode} /* this specifies @group(0) @binding(0) */
     /* input + output */
-    @group(0) @binding(0) var<storage, read_write> vertices: array<vec3f>;
+    @group(0) @binding(1) var<storage, read_write> vertices: array<vec3f>;
     /* input */
-    @group(0) @binding(1) var<storage, read> baseVertices: array<u32>;
-    @group(0) @binding(2) var<storage, read> baseVertexOffset: array<u32>;
-    @group(0) @binding(3) var<storage, read> baseVertexValence: array<u32>;
-    @group(0) @binding(4) var<storage, read> baseVertexIndex: array<u32>;
+    @group(0) @binding(2) var<storage, read> baseVertices: array<u32>;
+    @group(0) @binding(3) var<storage, read> baseVertexOffset: array<u32>;
+    @group(0) @binding(4) var<storage, read> baseVertexValence: array<u32>;
+    @group(0) @binding(5) var<storage, read> baseVertexIndex: array<u32>;
 
     /** "We use an index buffer containing the indices of the incident edge and
      * vertex points."
@@ -413,11 +435,12 @@ const vertexPointsModule = device.createShaderModule({
 const facetNormalsModule = device.createShaderModule({
   label: "compute facet normals module",
   code: /* wgsl */ `
+    ${uniformsCode} /* this specifies @group(0) @binding(0) */
     /* output */
-    @group(0) @binding(0) var<storage, read_write> facetNormals: array<vec3f>;
+    @group(0) @binding(1) var<storage, read_write> facetNormals: array<vec3f>;
     /* input */
-    @group(0) @binding(1) var<storage, read> vertices: array<vec3f>;
-    @group(0) @binding(2) var<storage, read> triangleIndices: array<u32>;
+    @group(0) @binding(2) var<storage, read> vertices: array<vec3f>;
+    @group(0) @binding(3) var<storage, read> triangleIndices: array<u32>;
 
      /** Algorithm:
       * For tri in all triangles:
@@ -463,11 +486,12 @@ const facetNormalsModule = device.createShaderModule({
 const vertexNormalsModule = device.createShaderModule({
   label: "compute vertex normals module",
   code: /* wgsl */ `
+    ${uniformsCode} /* this specifies @group(0) @binding(0) */
     /* output */
-    @group(0) @binding(0) var<storage, read_write> vertexNormals: array<vec3f>;
+    @group(0) @binding(1) var<storage, read_write> vertexNormals: array<vec3f>;
     /* input */
-    @group(0) @binding(1) var<storage, read> facetNormals: array<vec3f>;
-    @group(0) @binding(2) var<storage, read> triangleIndices: array<u32>;
+    @group(0) @binding(2) var<storage, read> facetNormals: array<vec3f>;
+    @group(0) @binding(3) var<storage, read> triangleIndices: array<u32>;
 
     /* see facetNormalsModule for algorithm */
 
@@ -780,10 +804,11 @@ const faceBindGroup = device.createBindGroup({
   label: `bindGroup for face kernel`,
   layout: facePipeline.getBindGroupLayout(0),
   entries: [
-    { binding: 0, resource: { buffer: verticesBuffer } },
-    { binding: 1, resource: { buffer: baseFacesBuffer } },
-    { binding: 2, resource: { buffer: baseFaceOffsetBuffer } },
-    { binding: 3, resource: { buffer: baseFaceValenceBuffer } },
+    { binding: 0, resource: { buffer: uniformsBuffer } },
+    { binding: 1, resource: { buffer: verticesBuffer } },
+    { binding: 2, resource: { buffer: baseFacesBuffer } },
+    { binding: 3, resource: { buffer: baseFaceOffsetBuffer } },
+    { binding: 4, resource: { buffer: baseFaceValenceBuffer } },
   ],
 });
 
@@ -791,8 +816,9 @@ const edgeBindGroup = device.createBindGroup({
   label: "bindGroup for edge kernel",
   layout: edgePipeline.getBindGroupLayout(0),
   entries: [
-    { binding: 0, resource: { buffer: verticesBuffer } },
-    { binding: 1, resource: { buffer: baseEdgesBuffer } },
+    // { binding: 0, resource: { buffer: uniformsBuffer } },
+    { binding: 1, resource: { buffer: verticesBuffer } },
+    { binding: 2, resource: { buffer: baseEdgesBuffer } },
   ],
 });
 
@@ -800,11 +826,12 @@ const vertexBindGroup = device.createBindGroup({
   label: "bindGroup for vertex kernel",
   layout: vertexPipeline.getBindGroupLayout(0),
   entries: [
-    { binding: 0, resource: { buffer: verticesBuffer } },
-    { binding: 1, resource: { buffer: baseVerticesBuffer } },
-    { binding: 2, resource: { buffer: baseVertexOffsetBuffer } },
-    { binding: 3, resource: { buffer: baseVertexValenceBuffer } },
-    { binding: 4, resource: { buffer: baseVertexIndexBuffer } },
+    // { binding: 0, resource: { buffer: uniformsBuffer } },
+    { binding: 1, resource: { buffer: verticesBuffer } },
+    { binding: 2, resource: { buffer: baseVerticesBuffer } },
+    { binding: 3, resource: { buffer: baseVertexOffsetBuffer } },
+    { binding: 4, resource: { buffer: baseVertexValenceBuffer } },
+    { binding: 5, resource: { buffer: baseVertexIndexBuffer } },
   ],
 });
 
@@ -812,9 +839,10 @@ const facetNormalsBindGroup = device.createBindGroup({
   label: "bindGroup for computing facet normals",
   layout: facetNormalsPipeline.getBindGroupLayout(0),
   entries: [
-    { binding: 0, resource: { buffer: facetNormalsBuffer } },
-    { binding: 1, resource: { buffer: verticesBuffer } },
-    { binding: 2, resource: { buffer: triangleIndicesBuffer } },
+    // { binding: 0, resource: { buffer: uniformsBuffer } },
+    { binding: 1, resource: { buffer: facetNormalsBuffer } },
+    { binding: 2, resource: { buffer: verticesBuffer } },
+    { binding: 3, resource: { buffer: triangleIndicesBuffer } },
   ],
 });
 
@@ -822,9 +850,10 @@ const vertexNormalsBindGroup = device.createBindGroup({
   label: "bindGroup for computing vertex normals",
   layout: vertexNormalsPipeline.getBindGroupLayout(0),
   entries: [
-    { binding: 0, resource: { buffer: vertexNormalsBuffer } },
-    { binding: 1, resource: { buffer: facetNormalsBuffer } },
-    { binding: 2, resource: { buffer: triangleIndicesBuffer } },
+    // { binding: 0, resource: { buffer: uniformsBuffer } },
+    { binding: 1, resource: { buffer: vertexNormalsBuffer } },
+    { binding: 2, resource: { buffer: facetNormalsBuffer } },
+    { binding: 3, resource: { buffer: triangleIndicesBuffer } },
   ],
 });
 
