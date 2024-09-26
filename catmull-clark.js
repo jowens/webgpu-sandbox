@@ -327,8 +327,8 @@ const edgePointsModule = device.createShaderModule({
     @compute @workgroup_size(${WORKGROUP_SIZE}) fn edgePointsKernel(
       @builtin(global_invocation_id) id: vec3u) {
         let i = id.x;
-        if (i < ${mesh.levelCount[1].e}) {
-          let out = i + ${mesh.levelBasePtr[1].e};
+        if (i < myUniforms.levelCount[1].e) {
+          let out = i + myUniforms.levelBasePtr[1].e;
           let edgeID = i;
           vertices[out] = vec3f(0,0,0);
           for (var j: u32 = 0; j < 4; j++) {
@@ -807,7 +807,7 @@ const edgeBindGroup = device.createBindGroup({
   label: "bindGroup for edge kernel",
   layout: edgePipeline.getBindGroupLayout(0),
   entries: [
-    // { binding: 0, resource: { buffer: uniformsBuffer } },
+    { binding: 0, resource: { buffer: uniformsBuffer } },
     { binding: 1, resource: { buffer: verticesBuffer } },
     { binding: 2, resource: { buffer: baseEdgesBuffer } },
   ],
