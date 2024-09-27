@@ -84,9 +84,13 @@ const modelUrls = {
 };
 
 const pane = new Pane();
-pane.addBinding(models, "model", {
-  options: { pyramid: "pyramid", teapot_low: "teapot_low" },
-});
+pane
+  .addBinding(models, "model", {
+    options: { pyramid: "pyramid", teapot_low: "teapot_low" },
+  })
+  .on("change", (ev) => {
+    console.log(modelUrls[ev.value]);
+  });
 pane.addBinding(uni.views.ROTATE_CAMERA_SPEED, 0, {
   min: 0,
   max: 1,
@@ -146,6 +150,12 @@ context.configure({
  * crease edges, and hierarchical detail; it is independent of the geometric
  * location of the control points." */
 
+async function loadMesh(url) {
+  const mesh = await urlToMesh(url);
+  console.log(mesh);
+  return mesh;
+}
+
 // square pyramid
 const objurl1 =
   "https://gist.githubusercontent.com/jowens/ccd142c4d17e6c188c5105a1881561bf/raw/26e58cb754d1dfb8c30c86d33e0c21497c2167e8/square-pyramid.obj";
@@ -166,41 +176,7 @@ const objurl6 =
   "https://gist.githubusercontent.com/jowens/5f7bc872317b5fd5f7d72827967f1c9d/raw/1f846ee3229297520dd855b199d21717e30af91b/stanford-teapot.obj";
 const objurl7 = "http://localhost:8000/meshes/ogre.obj";
 
-const mesh = await urlToMesh(objurl4);
-console.log(mesh);
-
-const verticesSize = mesh.levelBasePtr[1].v + mesh.levelCount[1].v;
-const verticesObjectSize = 4; // float4s (but ignore w coord for now)
-const normalsObjectSize = 4; // float4s (but ignore w coord for now)
-// float3s were fraught with peril (padding)
-const vertices = new Float32Array(verticesSize * verticesObjectSize);
-// vertexNormals is uninitialized; it's instead set in a kernel
-const vertexNormals = new Float32Array(verticesSize * normalsObjectSize);
-
-/* populate vertices from mesh data structure */
-for (let i = 0; i < mesh.levelCount[0].v * verticesObjectSize; i++) {
-  vertices[i] = mesh.vertices[i];
-}
-
-// Q: Is a flattened 1D array the right way to represent base faces?
-// should it instead be a 2D array, [face][vertex]?
-// i am guessing flattened data structures (like this one) are preferred
-const baseFaces = new Uint32Array(mesh.faces);
-const triangleIndices = new Uint32Array(mesh.triangles);
-const facetNormals = new Float32Array(
-  triangleIndices.length * normalsObjectSize // normal per tri
-);
-const baseFaceValence = new Uint32Array(mesh.faceValence);
-// baseFaceOffset is exclusive_scan('+', baseFaceValence)
-// TODO: compute that scan in a compute shader
-const baseFaceOffset = new Uint32Array(mesh.faceOffset);
-const baseEdges = new Uint32Array(mesh.edges);
-const baseVertexValence = new Uint32Array(mesh.vertexValence);
-// baseVertexOffset is 2 * exclusive_scan('+', baseVertexValence)
-// TODO: compute that scan in a compute shader
-const baseVertexOffset = new Uint32Array(mesh.vertexOffset);
-const baseVertexIndex = new Uint32Array(mesh.vertexIndex);
-const baseVertices = new Uint32Array(mesh.baseVertices.flat());
+const mesh = await loadMesh(objurl4);
 
 uni.set({ levelCount: mesh.levelCount, levelBasePtr: mesh.levelBasePtr });
 
@@ -637,67 +613,67 @@ const renderPipeline = device.createRenderPipeline({
 // read-only inputs:
 const baseFacesBuffer = device.createBuffer({
   label: "base faces buffer",
-  size: baseFaces.byteLength,
+  size: mesh.faces.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(baseFacesBuffer, 0, baseFaces);
+device.queue.writeBuffer(baseFacesBuffer, 0, mesh.faces);
 
 const baseEdgesBuffer = device.createBuffer({
   label: "base edges buffer",
-  size: baseEdges.byteLength,
+  size: mesh.edges.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(baseEdgesBuffer, 0, baseEdges);
+device.queue.writeBuffer(baseEdgesBuffer, 0, mesh.edges);
 
 const baseFaceOffsetBuffer = device.createBuffer({
   label: "base face offset",
-  size: baseFaceOffset.byteLength,
+  size: mesh.faceOffset.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(baseFaceOffsetBuffer, 0, baseFaceOffset);
+device.queue.writeBuffer(baseFaceOffsetBuffer, 0, mesh.faceOffset);
 
 const baseFaceValenceBuffer = device.createBuffer({
   label: "base face valence",
-  size: baseFaceValence.byteLength,
+  size: mesh.faceValence.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(baseFaceValenceBuffer, 0, baseFaceValence);
+device.queue.writeBuffer(baseFaceValenceBuffer, 0, mesh.faceValence);
 
 const baseVerticesBuffer = device.createBuffer({
   label: "base vertices buffer",
-  size: baseVertices.byteLength,
+  size: mesh.baseVertices.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(baseVerticesBuffer, 0, baseVertices);
+device.queue.writeBuffer(baseVerticesBuffer, 0, mesh.baseVertices);
 
 const baseVertexOffsetBuffer = device.createBuffer({
   label: "base vertex offset buffer",
-  size: baseVertexOffset.byteLength,
+  size: mesh.vertexOffset.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(baseVertexOffsetBuffer, 0, baseVertexOffset);
+device.queue.writeBuffer(baseVertexOffsetBuffer, 0, mesh.vertexOffset);
 
 const baseVertexValenceBuffer = device.createBuffer({
   label: "base vertex valence buffer",
-  size: baseVertexValence.byteLength,
+  size: mesh.vertexValence.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(baseVertexValenceBuffer, 0, baseVertexValence);
+device.queue.writeBuffer(baseVertexValenceBuffer, 0, mesh.vertexValence);
 
 const baseVertexIndexBuffer = device.createBuffer({
   label: "base vertex index buffer",
-  size: baseVertexIndex.byteLength,
+  size: mesh.vertexIndex.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(baseVertexIndexBuffer, 0, baseVertexIndex);
+device.queue.writeBuffer(baseVertexIndexBuffer, 0, mesh.vertexIndex);
 
 const triangleIndicesBuffer = device.createBuffer({
   label: "triangle indices buffer",
-  size: triangleIndices.byteLength,
+  size: mesh.triangles.byteLength,
   usage:
     GPUBufferUsage.INDEX | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(triangleIndicesBuffer, 0, triangleIndices);
+device.queue.writeBuffer(triangleIndicesBuffer, 0, mesh.triangles);
 
 const mvxLength = 4 * 16; /* float32 4x4 matrix */
 const mvxBuffer = device.createBuffer({
@@ -708,52 +684,53 @@ const mvxBuffer = device.createBuffer({
 // write happens at the start of every frame
 
 // vertex buffer is both input and output
+console.log("mesh vertices bytelength", mesh.vertices.byteLength);
 const verticesBuffer = device.createBuffer({
   label: "vertex buffer",
-  size: vertices.byteLength,
+  size: mesh.vertices.byteLength,
   usage:
     GPUBufferUsage.STORAGE |
     GPUBufferUsage.VERTEX |
     GPUBufferUsage.COPY_DST |
     GPUBufferUsage.COPY_SRC,
 });
-device.queue.writeBuffer(verticesBuffer, 0, vertices);
+device.queue.writeBuffer(verticesBuffer, 0, mesh.vertices);
 
 const facetNormalsBuffer = device.createBuffer({
   label: "facet normals buffer",
-  size: facetNormals.byteLength,
+  size: mesh.facetNormals.byteLength,
   usage:
     GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
 });
-device.queue.writeBuffer(facetNormalsBuffer, 0, facetNormals);
+device.queue.writeBuffer(facetNormalsBuffer, 0, mesh.facetNormals);
 
 const vertexNormalsBuffer = device.createBuffer({
   label: "vertex normals buffer",
-  size: vertexNormals.byteLength,
+  size: mesh.vertexNormals.byteLength,
   usage:
     GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
 });
-device.queue.writeBuffer(vertexNormalsBuffer, 0, vertexNormals);
+device.queue.writeBuffer(vertexNormalsBuffer, 0, mesh.vertexNormals);
 
 /** and the mappable output buffers (I believe that "mappable" is the only way to read from GPU->CPU) */
 const mappableVerticesResultBuffer = device.createBuffer({
   label: "mappable vertices result buffer",
-  size: vertices.byteLength,
+  size: mesh.vertices.byteLength,
   usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
 });
 const mappableFacetNormalsResultBuffer = device.createBuffer({
   label: "mappable facet normals result buffer",
-  size: facetNormals.byteLength,
+  size: mesh.facetNormals.byteLength,
   usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
 });
 const mappableVertexNormalsResultBuffer = device.createBuffer({
   label: "mappable vertex normals result buffer",
-  size: vertexNormals.byteLength,
+  size: mesh.vertexNormals.byteLength,
   usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
 });
 
 // TODO compute this using sizeof() so it's not hardcoded
-const bytesPerVertex = verticesObjectSize * 4;
+const bytesPerVertex = mesh.vertexSize * 4;
 
 /** Set up bindGroups per compute kernel to tell the shader which buffers to use */
 /** I had hoped to do all verticesBuffer bindings as slices as below,
@@ -763,6 +740,11 @@ const bytesPerVertex = verticesObjectSize * 4;
  * This particular bindGroup is OK because it's always at the beginning of
  * verticesBuffer.
  */
+console.log("mesh.levelCount[0].v", mesh.levelCount[0].v);
+console.log(
+  "mesh.levelCount[0].v * bytesPerVertex",
+  mesh.levelCount[0].v * bytesPerVertex
+);
 const perturbBindGroup = device.createBindGroup({
   label: "bindGroup for perturb input vertices kernel",
   layout: perturbPipeline.getBindGroupLayout(0),
@@ -773,7 +755,7 @@ const perturbBindGroup = device.createBindGroup({
       resource: {
         buffer: verticesBuffer,
         offset: 0,
-        size: mesh.levelBasePtr[1].v * bytesPerVertex,
+        size: mesh.levelCount[0].v * bytesPerVertex,
       },
     },
   ],
@@ -924,7 +906,10 @@ async function frame() {
 
   computePass.setPipeline(vertexNormalsPipeline);
   computePass.setBindGroup(0, vertexNormalsBindGroup);
-  computePass.dispatchWorkgroups(Math.ceil(verticesSize / WORKGROUP_SIZE));
+  computePass.dispatchWorkgroups(
+    // XXX FIX this is probably broken, wrong size
+    Math.ceil(mesh.vertices.length / WORKGROUP_SIZE)
+  );
   computePass.end();
 
   // Encode a command to copy the results to a mappable buffer.
