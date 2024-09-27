@@ -34,7 +34,8 @@ class SubdivMesh {
   constructor(verticesIn, facesIn) {
     /* everything prefixed with "this." is a data structure that will go to the GPU */
     /* everything else is internal-only and will not be externally visible */
-    this.vertices = []; // why can't I do new Float32Array?
+    /* strategy: build everything up as JS objects and then lower to Arrays on return */
+    this.vertices = [];
     this.verticesReset = [];
     this.faces = []; // indexed per vertex
     this.triangles = [];
@@ -45,7 +46,8 @@ class SubdivMesh {
     this.vertexOffset = [];
     this.vertexValence = [];
     this.vertexIndex = [];
-    const vertexSize = 4; // # elements per vertex
+    this.vertexSize = 4; // # elements per vertex (ignore w coord for now)
+    this.normalSize = 4; // float4s (ignore w coord for now)
     const initialVertexCount = verticesIn.length;
     this.levelCount = [new Level(0, 0, initialVertexCount, 0)];
     this.levelBasePtr = [new Level(0, 0, 0, -1)];
@@ -83,9 +85,9 @@ class SubdivMesh {
     }
     if (this.scaleInput) {
       for (let i = 0; i < this.levelCount[0].v; i++) {
-        this.vertices[i * vertexSize + 0] /= this.largestInput;
-        this.vertices[i * vertexSize + 1] /= this.largestInput;
-        this.vertices[i * vertexSize + 2] /= this.largestInput;
+        this.vertices[i * this.vertexSize + 0] /= this.largestInput;
+        this.vertices[i * this.vertexSize + 1] /= this.largestInput;
+        this.vertices[i * this.vertexSize + 2] /= this.largestInput;
       }
     }
     /* cleanup, get rid of negative zeroes */
@@ -109,7 +111,7 @@ class SubdivMesh {
      * counts/offsets
      */
     this.levelCount.push(
-      new Level(
+      new Level( // f, e, v, t
         facesIn.length,
         facesIn.length + initialVertexCount - 2,
         initialVertexCount,
@@ -126,6 +128,10 @@ class SubdivMesh {
         -1
       )
     );
+
+    this.verticesSize = this.levelBasePtr[level].v + this.levelCount[level].v;
+    // this seems weird, but I can just lengthen an array by setting its length?
+    this.vertices.length = this.verticesSize * this.vertexSize;
 
     console.log("Counts:   ", this.levelCount);
     console.log("Base ptr: ", this.levelBasePtr);
@@ -308,6 +314,24 @@ class SubdivMesh {
       this.vertexOffset.push(vertexOffset);
       vertexOffset += neighbors.length;
     });
+    // Now wrap everything in JS arrays
+    this.vertices = new Float32Array(this.vertices);
+    this.vertexNormals = new Float32Array(this.verticesSize * this.normalSize); // empty
+    this.facetNormals = new Float32Array( // empty
+      (this.triangles * this.normalSize) / 3
+    );
+    this.faces = new Uint32Array(this.faces);
+    this.edges = new Uint32Array(this.edges);
+    this.triangles = new Uint32Array(this.triangles);
+    this.facetNormals = new Float32Array(
+      this.triangles.length * this.normalSize // normal per tri
+    );
+    this.faceValence = new Uint32Array(this.faceValence);
+    this.faceOffset = new Uint32Array(this.faceOffset);
+    this.vertexValence = new Uint32Array(this.vertexValence);
+    this.vertexOffset = new Uint32Array(this.vertexOffset);
+    this.vertexIndex = new Uint32Array(this.vertexIndex);
+    this.baseVertices = new Uint32Array(this.baseVertices.flat());
   }
 }
 // const mesh = new SubdivMesh(
