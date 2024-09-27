@@ -94,6 +94,7 @@ const pane = new Pane();
 pane
   .addBinding(nonUniformParams, "model", {
     options: {
+      // what it shows : what it returns
       "Square Pyramid": "square_pyramid",
       Diamond: "diamond",
       Teddy: "teddy",
@@ -105,6 +106,7 @@ pane
   .on("change", async (ev) => {
     console.log(ev, ev.value, modelToURL[ev.value]);
     mesh = await loadMesh(modelToURL[ev.value]);
+    writeGPUBuffers();
   });
 pane.addBinding(uni.views.ROTATE_CAMERA_SPEED, 0, {
   min: 0,
@@ -631,56 +633,48 @@ const baseFacesBuffer = device.createBuffer({
   size: mesh.faces.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(baseFacesBuffer, 0, mesh.faces);
 
 const baseEdgesBuffer = device.createBuffer({
   label: "base edges buffer",
   size: mesh.edges.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(baseEdgesBuffer, 0, mesh.edges);
 
 const baseFaceOffsetBuffer = device.createBuffer({
   label: "base face offset",
   size: mesh.faceOffset.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(baseFaceOffsetBuffer, 0, mesh.faceOffset);
 
 const baseFaceValenceBuffer = device.createBuffer({
   label: "base face valence",
   size: mesh.faceValence.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(baseFaceValenceBuffer, 0, mesh.faceValence);
 
 const baseVerticesBuffer = device.createBuffer({
   label: "base vertices buffer",
   size: mesh.baseVertices.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(baseVerticesBuffer, 0, mesh.baseVertices);
 
 const baseVertexOffsetBuffer = device.createBuffer({
   label: "base vertex offset buffer",
   size: mesh.vertexOffset.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(baseVertexOffsetBuffer, 0, mesh.vertexOffset);
 
 const baseVertexValenceBuffer = device.createBuffer({
   label: "base vertex valence buffer",
   size: mesh.vertexValence.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(baseVertexValenceBuffer, 0, mesh.vertexValence);
 
 const baseVertexIndexBuffer = device.createBuffer({
   label: "base vertex index buffer",
   size: mesh.vertexIndex.byteLength,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(baseVertexIndexBuffer, 0, mesh.vertexIndex);
 
 const triangleIndicesBuffer = device.createBuffer({
   label: "triangle indices buffer",
@@ -688,7 +682,6 @@ const triangleIndicesBuffer = device.createBuffer({
   usage:
     GPUBufferUsage.INDEX | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-device.queue.writeBuffer(triangleIndicesBuffer, 0, mesh.triangles);
 
 const mvxLength = 4 * 16; /* float32 4x4 matrix */
 const mvxBuffer = device.createBuffer({
@@ -708,7 +701,6 @@ const verticesBuffer = device.createBuffer({
     GPUBufferUsage.COPY_DST |
     GPUBufferUsage.COPY_SRC,
 });
-device.queue.writeBuffer(verticesBuffer, 0, mesh.vertices);
 
 const facetNormalsBuffer = device.createBuffer({
   label: "facet normals buffer",
@@ -716,7 +708,6 @@ const facetNormalsBuffer = device.createBuffer({
   usage:
     GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
 });
-device.queue.writeBuffer(facetNormalsBuffer, 0, mesh.facetNormals);
 
 const vertexNormalsBuffer = device.createBuffer({
   label: "vertex normals buffer",
@@ -724,7 +715,22 @@ const vertexNormalsBuffer = device.createBuffer({
   usage:
     GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
 });
-device.queue.writeBuffer(vertexNormalsBuffer, 0, mesh.vertexNormals);
+
+function writeGPUBuffers() {
+  device.queue.writeBuffer(baseFacesBuffer, 0, mesh.faces);
+  device.queue.writeBuffer(baseEdgesBuffer, 0, mesh.edges);
+  device.queue.writeBuffer(baseFaceOffsetBuffer, 0, mesh.faceOffset);
+  device.queue.writeBuffer(baseFaceValenceBuffer, 0, mesh.faceValence);
+  device.queue.writeBuffer(baseVerticesBuffer, 0, mesh.baseVertices);
+  device.queue.writeBuffer(baseVertexOffsetBuffer, 0, mesh.vertexOffset);
+  device.queue.writeBuffer(baseVertexValenceBuffer, 0, mesh.vertexValence);
+  device.queue.writeBuffer(baseVertexIndexBuffer, 0, mesh.vertexIndex);
+  device.queue.writeBuffer(triangleIndicesBuffer, 0, mesh.triangles);
+  device.queue.writeBuffer(verticesBuffer, 0, mesh.vertices);
+  device.queue.writeBuffer(facetNormalsBuffer, 0, mesh.facetNormals);
+  device.queue.writeBuffer(vertexNormalsBuffer, 0, mesh.vertexNormals);
+}
+writeGPUBuffers();
 
 /** and the mappable output buffers (I believe that "mappable" is the only way to read from GPU->CPU) */
 const mappableVerticesResultBuffer = device.createBuffer({
