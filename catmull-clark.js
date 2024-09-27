@@ -57,6 +57,7 @@ const uniformsCode = /* wgsl */ `
 /* why the @group/@binding? gman@:
  * "It's necessary for them to show up in defs.uniforms or defs.storages. You
  *  can use defs.structs to pull out a struct, separately from a group/binding (I think?)"
+ * "As your comment mentions you can use uniforms_defs.structs.MyUniforms"
  */
 const uniformsDefs = makeShaderDataDefinitions(uniformsCode);
 const uni = makeStructuredView(uniformsDefs.uniforms.myUniforms);
@@ -928,27 +929,29 @@ async function frame() {
 
   // Encode a command to copy the results to a mappable buffer.
   // this is (from, to)
-  encoder.copyBufferToBuffer(
-    verticesBuffer,
-    0,
-    mappableVerticesResultBuffer,
-    0,
-    mappableVerticesResultBuffer.size
-  );
-  encoder.copyBufferToBuffer(
-    facetNormalsBuffer,
-    0,
-    mappableFacetNormalsResultBuffer,
-    0,
-    mappableFacetNormalsResultBuffer.size
-  );
-  encoder.copyBufferToBuffer(
-    vertexNormalsBuffer,
-    0,
-    mappableVertexNormalsResultBuffer,
-    0,
-    mappableVertexNormalsResultBuffer.size
-  );
+  if (debug) {
+    encoder.copyBufferToBuffer(
+      verticesBuffer,
+      0,
+      mappableVerticesResultBuffer,
+      0,
+      mappableVerticesResultBuffer.size
+    );
+    encoder.copyBufferToBuffer(
+      facetNormalsBuffer,
+      0,
+      mappableFacetNormalsResultBuffer,
+      0,
+      mappableFacetNormalsResultBuffer.size
+    );
+    encoder.copyBufferToBuffer(
+      vertexNormalsBuffer,
+      0,
+      mappableVertexNormalsResultBuffer,
+      0,
+      mappableVertexNormalsResultBuffer.size
+    );
+  }
 
   const renderPass = encoder.beginRenderPass({
     colorAttachments: [
