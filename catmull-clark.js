@@ -72,24 +72,39 @@ uni.set({
   timestep: 1.0,
 });
 
-const models = {
-  model: "pyramid",
+const nonUniformParams = {
+  model: "Square Pyramid",
 };
 
-const modelUrls = {
-  pyramid:
-    "https://gist.githubusercontent.com/jowens/fb3a19db8f4c6271cd9b730b77f7d210/raw/311e98007d600dd10a3425be8312139dc442ca5d/square-pyramid.obj",
-  teapot_low:
-    "https://graphics.cs.utah.edu/courses/cs6620/fall2013/prj05/teapot-low.obj",
+const modelToURL = {
+  square_pyramid:
+    "https://gist.githubusercontent.com/jowens/ccd142c4d17e6c188c5105a1881561bf/raw/26e58cb754d1dfb8c30c86d33e0c21497c2167e8/square-pyramid.obj",
+  diamond:
+    "https://gist.githubusercontent.com/jowens/ebe82add66adfee31fe49579963c515d/raw/2046cff529575615e32a283a9ca2b4e44f3a13d2/diamond.obj",
+  teddy:
+    "https://gist.githubusercontent.com/jowens/d49b13c7f847bda5ffc36d2166888b5f/raw/2756e4e3c5be3b2cce35244c961f462411cefaef/teddy.obj",
+  al: "https://gist.githubusercontent.com/jowens/360d591b8484958cf1c5b015c96c0958/raw/6390f2a2c720d378d1aa77baba7605c67d40e2e4/al.obj",
+  teapot_lowres:
+    "https://gist.githubusercontent.com/jowens/508d6d7f70b33010508f3c679abd61ff/raw/0315c1d585a63687034ae4deecb5b49b8d653017/teapot-lower.obj",
+  stanford_teapot:
+    "https://gist.githubusercontent.com/jowens/5f7bc872317b5fd5f7d72827967f1c9d/raw/1f846ee3229297520dd855b199d21717e30af91b/stanford-teapot.obj",
 };
 
 const pane = new Pane();
 pane
-  .addBinding(models, "model", {
-    options: { pyramid: "pyramid", teapot_low: "teapot_low" },
+  .addBinding(nonUniformParams, "model", {
+    options: {
+      "Square Pyramid": "square_pyramid",
+      Diamond: "diamond",
+      Teddy: "teddy",
+      Al: "al",
+      "Teapot (Low Res)": "teapot_lowres",
+      "Stanford Teapot": "stanford_teapot",
+    },
   })
-  .on("change", (ev) => {
-    console.log(modelUrls[ev.value]);
+  .on("change", async (ev) => {
+    console.log(ev, ev.value, modelToURL[ev.value]);
+    mesh = await loadMesh(modelToURL[ev.value]);
   });
 pane.addBinding(uni.views.ROTATE_CAMERA_SPEED, 0, {
   min: 0,
@@ -176,7 +191,7 @@ const objurl6 =
   "https://gist.githubusercontent.com/jowens/5f7bc872317b5fd5f7d72827967f1c9d/raw/1f846ee3229297520dd855b199d21717e30af91b/stanford-teapot.obj";
 const objurl7 = "http://localhost:8000/meshes/ogre.obj";
 
-const mesh = await loadMesh(objurl4);
+let mesh = await loadMesh(objurl4);
 
 uni.set({ levelCount: mesh.levelCount, levelBasePtr: mesh.levelBasePtr });
 
@@ -684,7 +699,6 @@ const mvxBuffer = device.createBuffer({
 // write happens at the start of every frame
 
 // vertex buffer is both input and output
-console.log("mesh vertices bytelength", mesh.vertices.byteLength);
 const verticesBuffer = device.createBuffer({
   label: "vertex buffer",
   size: mesh.vertices.byteLength,
@@ -740,11 +754,6 @@ const bytesPerVertex = mesh.vertexSize * 4;
  * This particular bindGroup is OK because it's always at the beginning of
  * verticesBuffer.
  */
-console.log("mesh.levelCount[0].v", mesh.levelCount[0].v);
-console.log(
-  "mesh.levelCount[0].v * bytesPerVertex",
-  mesh.levelCount[0].v * bytesPerVertex
-);
 const perturbBindGroup = device.createBindGroup({
   label: "bindGroup for perturb input vertices kernel",
   layout: perturbPipeline.getBindGroupLayout(0),
