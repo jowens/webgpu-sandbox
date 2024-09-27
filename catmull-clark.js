@@ -201,18 +201,7 @@ const baseVertexOffset = new Uint32Array(mesh.vertexOffset);
 const baseVertexIndex = new Uint32Array(mesh.vertexIndex);
 const baseVertices = new Uint32Array(mesh.baseVertices.flat());
 
-// this can surely be cleaner
-// https://github.com/greggman/webgpu-utils/issues/11
-for (let j = 0; j <= mesh.maxLevel; j++) {
-  uni.views.levelCount[j].f[0] = mesh.levelCount[j].f;
-  uni.views.levelCount[j].e[0] = mesh.levelCount[j].e;
-  uni.views.levelCount[j].v[0] = mesh.levelCount[j].v;
-  uni.views.levelCount[j].t[0] = mesh.levelCount[j].t;
-  uni.views.levelBasePtr[j].f[0] = mesh.levelBasePtr[j].f;
-  uni.views.levelBasePtr[j].e[0] = mesh.levelBasePtr[j].e;
-  uni.views.levelBasePtr[j].v[0] = mesh.levelBasePtr[j].v;
-  uni.views.levelBasePtr[j].t[0] = mesh.levelBasePtr[j].t;
-}
+uni.set({ levelCount: mesh.levelCount, levelBasePtr: mesh.levelBasePtr });
 
 const perturbInputVerticesModule = device.createShaderModule({
   label: "perturb input vertices module",
