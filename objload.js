@@ -176,6 +176,7 @@ class SubdivMesh {
        * outputs are:
        * -
        */
+      console.log(facesInternal);
       facesInternal[level] = [];
       const seenVertices = new Set();
       for (
@@ -186,13 +187,12 @@ class SubdivMesh {
         // i indexes the face from the previous level
         // faceOffset indexes individual vertices within the face
         // fPointsPtr indexes into the output vertex array
-        this.faceOffset.push(faceOffset);
+        this.faceOffset.push(faceOffset); // TODO should be this.faceOffset[facePointID] = faceOffset
         this.faceValence.push(facesInternal[level - 1][i].length);
         faceOffset += facesInternal[level - 1][i].length;
         const thisFacePtr = this.faces.length;
 
         // now loop through vertices in this face, recording edges
-        const vBase = thisFacePtr;
         const faceLen = facesInternal[level - 1][i].length;
         for (let j = 0; j < faceLen; j++) {
           let start = j;
@@ -210,6 +210,12 @@ class SubdivMesh {
             console.log(`ERROR: edge ${edge} already in edgeToFace`);
           }
           edgeToFace.set(edge, facePointID);
+          console.log(
+            "Looking at edge ",
+            edge,
+            ", now has facePointID",
+            facePointID
+          );
           /**  in a manifold mesh, each edge will be set twice, so it's
            *   OK if it's already set; but if it sets here, it better be set twice */
           if (edgeToEdgeID.has(edge) ^ edgeToEdgeID.has(edgeRev)) {
@@ -229,28 +235,35 @@ class SubdivMesh {
         this.levelBasePtr[level].e + this.levelCount[level].e;
 
       // all faces have been ingested, let's subdivide!
-      // XXX WRONG probably want to set vBase smarter than 0
+      // loop through all faces in previous level
       for (
-        let vBase = 0, i = 0, fPointsPtr = this.levelBasePtr[level].f;
+        let i = 0, fPointsPtr = this.levelBasePtr[level].f;
         i < facesInternal[level - 1].length;
-        vBase += facesInternal[level - 1][i].length, i++, fPointsPtr++
+        i++, fPointsPtr++
       ) {
+        console.log("Considering face ", facesInternal[level - 1][i]);
         // to make nomenclature easier, let's have tiny functions v and e
         // they have to be arrow functions to inherit "this" from the surrounding scope
+        // v says "given vertex idx, what will be its v point?"
         const v = (idx) => {
-          return this.levelBasePtr[level].v + this.faces[vBase + idx];
+          return this.levelBasePtr[level].v + facesInternal[level - 1][i][idx];
         };
         const e = (v0, v1) => {
-          const key = edgeToKey(this.faces[vBase + v0], this.faces[vBase + v1]);
+          const key = edgeToKey(
+            facesInternal[level - 1][i][v0],
+            facesInternal[level - 1][i][v1]
+          );
           if (!edgeToEdgeID.has(key)) {
             console.log(
-              `ERROR: edgeToKey (${v0}, ${v1}) does not have key ${key} `
+              `ERROR [l=${level}]: edgeToEdgeID (${v0}, ${v1}) does not have key ${key} `
             );
+            console.log(edgeToEdgeID);
           }
           return edgeToEdgeID.get(key);
         };
         /* now we do the subdivision, push both quads and triangles */
         const mod = (n, d) => {
+          // wraps negative numbers sensibly
           return ((n % d) + d) % d;
         };
         const valence = facesInternal[level - 1][i].length;
@@ -268,6 +281,7 @@ class SubdivMesh {
             e(j, mod(j + 1, valence)),
           ]);
           this.faces.push(...facesInternal[level].at(-1)); // same as above
+          console.log("Output face: ", facesInternal[level].at(-1));
           this.triangles.push(
             /** there exists likely a smarter way of subdividing the quad:
              * what if (e.g.) it's non-convex? we should measure
