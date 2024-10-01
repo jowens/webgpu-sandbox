@@ -46,8 +46,6 @@ const uniformsCode = /* wgsl */ `
     WIGGLE_MAGNITUDE: f32,
     WIGGLE_SPEED: f32,
     subdivLevel: u32,
-    levelCount_f1: u32,
-    levelBasePtr_f1: u32,
     @align(16) levelCount: array<Level, MAX_LEVEL>,
     @align(16) levelBasePtr: array<Level, MAX_LEVEL>,
     time: f32,
@@ -72,7 +70,7 @@ uni.set({
   timestep: 1.0,
 });
 
-const nonUniformParams = {
+const modelParams = {
   model: "Square Pyramid",
 };
 
@@ -92,7 +90,7 @@ const modelToURL = {
 
 const pane = new Pane();
 pane
-  .addBinding(nonUniformParams, "model", {
+  .addBinding(modelParams, "model", {
     options: {
       // what it shows : what it returns
       "Square Pyramid": "square_pyramid",
@@ -104,9 +102,9 @@ pane
     },
   })
   .on("change", async (ev) => {
-    console.log(ev, ev.value, modelToURL[ev.value]);
     mesh = await loadMesh(modelToURL[ev.value]);
-    writeGPUBuffers();
+    ctx = new GPUContext(mesh);
+    frame();
   });
 pane.addBinding(uni.views.ROTATE_CAMERA_SPEED, 0, {
   min: 0,
@@ -166,36 +164,6 @@ context.configure({
  * The output of this phase depends only on the topology of the base mesh,
  * crease edges, and hierarchical detail; it is independent of the geometric
  * location of the control points." */
-
-async function loadMesh(url) {
-  const mesh = await urlToMesh(url);
-  console.log(mesh);
-  return mesh;
-}
-
-// square pyramid
-const objurl1 =
-  "https://gist.githubusercontent.com/jowens/ccd142c4d17e6c188c5105a1881561bf/raw/26e58cb754d1dfb8c30c86d33e0c21497c2167e8/square-pyramid.obj";
-// diamond
-const objurl2 =
-  "https://gist.githubusercontent.com/jowens/ebe82add66adfee31fe49579963c515d/raw/2046cff529575615e32a283a9ca2b4e44f3a13d2/diamond.obj";
-// teddy
-const objurl3 =
-  "https://gist.githubusercontent.com/jowens/d49b13c7f847bda5ffc36d2166888b5f/raw/2756e4e3c5be3b2cce35244c961f462411cefaef/teddy.obj";
-// al
-const objurl4 =
-  "https://gist.githubusercontent.com/jowens/360d591b8484958cf1c5b015c96c0958/raw/6390f2a2c720d378d1aa77baba7605c67d40e2e4/al.obj";
-// teapot-lower
-const objurl5 =
-  "https://gist.githubusercontent.com/jowens/508d6d7f70b33010508f3c679abd61ff/raw/0315c1d585a63687034ae4deecb5b49b8d653017/teapot-lower.obj";
-// stanford-teapot
-const objurl6 =
-  "https://gist.githubusercontent.com/jowens/5f7bc872317b5fd5f7d72827967f1c9d/raw/1f846ee3229297520dd855b199d21717e30af91b/stanford-teapot.obj";
-const objurl7 = "http://localhost:8000/meshes/ogre.obj";
-
-let mesh = await loadMesh(objurl4);
-
-uni.set({ levelCount: mesh.levelCount, levelBasePtr: mesh.levelBasePtr });
 
 const perturbInputVerticesModule = device.createShaderModule({
   label: "perturb input vertices module",
@@ -627,217 +595,6 @@ const renderPipeline = device.createRenderPipeline({
 });
 
 // create buffers on the GPU to hold data
-// read-only inputs:
-const baseFacesBuffer = device.createBuffer({
-  label: "base faces buffer",
-  size: mesh.faces.byteLength,
-  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-});
-
-const baseEdgesBuffer = device.createBuffer({
-  label: "base edges buffer",
-  size: mesh.edges.byteLength,
-  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-});
-
-const baseFaceOffsetBuffer = device.createBuffer({
-  label: "base face offset",
-  size: mesh.faceOffset.byteLength,
-  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-});
-
-const baseFaceValenceBuffer = device.createBuffer({
-  label: "base face valence",
-  size: mesh.faceValence.byteLength,
-  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-});
-
-const baseVerticesBuffer = device.createBuffer({
-  label: "base vertices buffer",
-  size: mesh.baseVertices.byteLength,
-  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-});
-
-const baseVertexOffsetBuffer = device.createBuffer({
-  label: "base vertex offset buffer",
-  size: mesh.vertexOffset.byteLength,
-  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-});
-
-const baseVertexValenceBuffer = device.createBuffer({
-  label: "base vertex valence buffer",
-  size: mesh.vertexValence.byteLength,
-  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-});
-
-const baseVertexIndexBuffer = device.createBuffer({
-  label: "base vertex index buffer",
-  size: mesh.vertexIndex.byteLength,
-  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-});
-
-const triangleIndicesBuffer = device.createBuffer({
-  label: "triangle indices buffer",
-  size: mesh.triangles.byteLength,
-  usage:
-    GPUBufferUsage.INDEX | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-});
-
-const mvxLength = 4 * 16; /* float32 4x4 matrix */
-const mvxBuffer = device.createBuffer({
-  label: "modelview + transformation matrix uniform buffer",
-  size: mvxLength,
-  usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-});
-// write happens at the start of every frame
-
-// vertex buffer is both input and output
-const verticesBuffer = device.createBuffer({
-  label: "vertex buffer",
-  size: mesh.vertices.byteLength,
-  usage:
-    GPUBufferUsage.STORAGE |
-    GPUBufferUsage.VERTEX |
-    GPUBufferUsage.COPY_DST |
-    GPUBufferUsage.COPY_SRC,
-});
-
-const facetNormalsBuffer = device.createBuffer({
-  label: "facet normals buffer",
-  size: mesh.facetNormals.byteLength,
-  usage:
-    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
-});
-
-const vertexNormalsBuffer = device.createBuffer({
-  label: "vertex normals buffer",
-  size: mesh.vertexNormals.byteLength,
-  usage:
-    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
-});
-
-function writeGPUBuffers() {
-  device.queue.writeBuffer(baseFacesBuffer, 0, mesh.faces);
-  device.queue.writeBuffer(baseEdgesBuffer, 0, mesh.edges);
-  device.queue.writeBuffer(baseFaceOffsetBuffer, 0, mesh.faceOffset);
-  device.queue.writeBuffer(baseFaceValenceBuffer, 0, mesh.faceValence);
-  device.queue.writeBuffer(baseVerticesBuffer, 0, mesh.baseVertices);
-  device.queue.writeBuffer(baseVertexOffsetBuffer, 0, mesh.vertexOffset);
-  device.queue.writeBuffer(baseVertexValenceBuffer, 0, mesh.vertexValence);
-  device.queue.writeBuffer(baseVertexIndexBuffer, 0, mesh.vertexIndex);
-  device.queue.writeBuffer(triangleIndicesBuffer, 0, mesh.triangles);
-  device.queue.writeBuffer(verticesBuffer, 0, mesh.vertices);
-  device.queue.writeBuffer(facetNormalsBuffer, 0, mesh.facetNormals);
-  device.queue.writeBuffer(vertexNormalsBuffer, 0, mesh.vertexNormals);
-}
-writeGPUBuffers();
-
-/** and the mappable output buffers (I believe that "mappable" is the only way to read from GPU->CPU) */
-const mappableVerticesResultBuffer = device.createBuffer({
-  label: "mappable vertices result buffer",
-  size: mesh.vertices.byteLength,
-  usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
-});
-const mappableFacetNormalsResultBuffer = device.createBuffer({
-  label: "mappable facet normals result buffer",
-  size: mesh.facetNormals.byteLength,
-  usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
-});
-const mappableVertexNormalsResultBuffer = device.createBuffer({
-  label: "mappable vertex normals result buffer",
-  size: mesh.vertexNormals.byteLength,
-  usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
-});
-
-// TODO compute this using sizeof() so it's not hardcoded
-const bytesPerVertex = mesh.vertexSize * 4;
-
-/** Set up bindGroups per compute kernel to tell the shader which buffers to use */
-/** I had hoped to do all verticesBuffer bindings as slices as below,
- * but buffer alignment restrictions appear to make this impossible.
- *   Offset (25568) of [Buffer "vertex buffer"] does not satisfy the minimum
- *   BufferBindingType::Storage alignment (256).
- * This particular bindGroup is OK because it's always at the beginning of
- * verticesBuffer.
- */
-const perturbBindGroup = device.createBindGroup({
-  label: "bindGroup for perturb input vertices kernel",
-  layout: perturbPipeline.getBindGroupLayout(0),
-  entries: [
-    { binding: 0, resource: { buffer: uniformsBuffer } },
-    {
-      binding: 1,
-      resource: {
-        buffer: verticesBuffer,
-        offset: 0,
-        size: mesh.levelCount[0].v * bytesPerVertex,
-      },
-    },
-  ],
-});
-
-const faceBindGroup = device.createBindGroup({
-  label: `bindGroup for face kernel`,
-  layout: facePipeline.getBindGroupLayout(0),
-  entries: [
-    { binding: 0, resource: { buffer: uniformsBuffer } },
-    { binding: 1, resource: { buffer: verticesBuffer } },
-    { binding: 2, resource: { buffer: baseFacesBuffer } },
-    { binding: 3, resource: { buffer: baseFaceOffsetBuffer } },
-    { binding: 4, resource: { buffer: baseFaceValenceBuffer } },
-  ],
-});
-
-const edgeBindGroup = device.createBindGroup({
-  label: "bindGroup for edge kernel",
-  layout: edgePipeline.getBindGroupLayout(0),
-  entries: [
-    { binding: 0, resource: { buffer: uniformsBuffer } },
-    { binding: 1, resource: { buffer: verticesBuffer } },
-    { binding: 2, resource: { buffer: baseEdgesBuffer } },
-  ],
-});
-
-const vertexBindGroup = device.createBindGroup({
-  label: "bindGroup for vertex kernel",
-  layout: vertexPipeline.getBindGroupLayout(0),
-  entries: [
-    { binding: 0, resource: { buffer: uniformsBuffer } },
-    { binding: 1, resource: { buffer: verticesBuffer } },
-    { binding: 2, resource: { buffer: baseVerticesBuffer } },
-    { binding: 3, resource: { buffer: baseVertexOffsetBuffer } },
-    { binding: 4, resource: { buffer: baseVertexValenceBuffer } },
-    { binding: 5, resource: { buffer: baseVertexIndexBuffer } },
-  ],
-});
-
-const facetNormalsBindGroup = device.createBindGroup({
-  label: "bindGroup for computing facet normals",
-  layout: facetNormalsPipeline.getBindGroupLayout(0),
-  entries: [
-    // { binding: 0, resource: { buffer: uniformsBuffer } },
-    { binding: 1, resource: { buffer: facetNormalsBuffer } },
-    { binding: 2, resource: { buffer: verticesBuffer } },
-    { binding: 3, resource: { buffer: triangleIndicesBuffer } },
-  ],
-});
-
-const vertexNormalsBindGroup = device.createBindGroup({
-  label: "bindGroup for computing vertex normals",
-  layout: vertexNormalsPipeline.getBindGroupLayout(0),
-  entries: [
-    // { binding: 0, resource: { buffer: uniformsBuffer } },
-    { binding: 1, resource: { buffer: vertexNormalsBuffer } },
-    { binding: 2, resource: { buffer: facetNormalsBuffer } },
-    { binding: 3, resource: { buffer: triangleIndicesBuffer } },
-  ],
-});
-
-const renderBindGroup = device.createBindGroup({
-  label: "bindGroup for rendering kernel",
-  layout: renderPipeline.getBindGroupLayout(0),
-  entries: [{ binding: 0, resource: { buffer: mvxBuffer } }],
-});
 
 const aspect = canvas.width / canvas.height;
 const projectionMatrix = mat4.perspective((2 * Math.PI) / 5, aspect, 1, 100.0);
@@ -855,6 +612,266 @@ function getTransformationMatrix() {
   mat4.multiply(projectionMatrix, viewMatrix, modelviewProjectionMatrix);
   return modelviewProjectionMatrix;
 }
+
+async function loadMesh(url) {
+  const mesh = await urlToMesh(url);
+  console.log(mesh);
+  return mesh;
+}
+
+// square pyramid
+const objurl1 =
+  "https://gist.githubusercontent.com/jowens/ccd142c4d17e6c188c5105a1881561bf/raw/26e58cb754d1dfb8c30c86d33e0c21497c2167e8/square-pyramid.obj";
+// diamond
+const objurl2 =
+  "https://gist.githubusercontent.com/jowens/ebe82add66adfee31fe49579963c515d/raw/2046cff529575615e32a283a9ca2b4e44f3a13d2/diamond.obj";
+// teddy
+const objurl3 =
+  "https://gist.githubusercontent.com/jowens/d49b13c7f847bda5ffc36d2166888b5f/raw/2756e4e3c5be3b2cce35244c961f462411cefaef/teddy.obj";
+// al
+const objurl4 =
+  "https://gist.githubusercontent.com/jowens/360d591b8484958cf1c5b015c96c0958/raw/6390f2a2c720d378d1aa77baba7605c67d40e2e4/al.obj";
+// teapot-lower
+const objurl5 =
+  "https://gist.githubusercontent.com/jowens/508d6d7f70b33010508f3c679abd61ff/raw/0315c1d585a63687034ae4deecb5b49b8d653017/teapot-lower.obj";
+// stanford-teapot
+const objurl6 =
+  "https://gist.githubusercontent.com/jowens/5f7bc872317b5fd5f7d72827967f1c9d/raw/1f846ee3229297520dd855b199d21717e30af91b/stanford-teapot.obj";
+const objurl7 = "http://localhost:8000/meshes/ogre.obj";
+
+let mesh = await loadMesh(objurl4);
+
+class GPUContext {
+  createGPUBuffers() {
+    // read-only inputs:
+    this.baseFacesBuffer = device.createBuffer({
+      label: "base faces buffer",
+      size: mesh.faces.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+
+    this.baseEdgesBuffer = device.createBuffer({
+      label: "base edges buffer",
+      size: mesh.edges.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+
+    this.baseFaceOffsetBuffer = device.createBuffer({
+      label: "base face offset",
+      size: mesh.faceOffset.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+
+    this.baseFaceValenceBuffer = device.createBuffer({
+      label: "base face valence",
+      size: mesh.faceValence.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+
+    this.baseVerticesBuffer = device.createBuffer({
+      label: "base vertices buffer",
+      size: mesh.baseVertices.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+
+    this.baseVertexOffsetBuffer = device.createBuffer({
+      label: "base vertex offset buffer",
+      size: mesh.vertexOffset.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+
+    this.baseVertexValenceBuffer = device.createBuffer({
+      label: "base vertex valence buffer",
+      size: mesh.vertexValence.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+
+    this.baseVertexIndexBuffer = device.createBuffer({
+      label: "base vertex index buffer",
+      size: mesh.vertexIndex.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+
+    this.triangleIndicesBuffer = device.createBuffer({
+      label: "triangle indices buffer",
+      size: mesh.triangles.byteLength,
+      usage:
+        GPUBufferUsage.INDEX | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+
+    // vertex buffer is both input and output
+    this.verticesBuffer = device.createBuffer({
+      label: "vertex buffer",
+      size: mesh.vertices.byteLength,
+      usage:
+        GPUBufferUsage.STORAGE |
+        GPUBufferUsage.VERTEX |
+        GPUBufferUsage.COPY_DST |
+        GPUBufferUsage.COPY_SRC,
+    });
+
+    this.facetNormalsBuffer = device.createBuffer({
+      label: "facet normals buffer",
+      size: mesh.facetNormals.byteLength,
+      usage:
+        GPUBufferUsage.STORAGE |
+        GPUBufferUsage.COPY_DST |
+        GPUBufferUsage.COPY_SRC,
+    });
+
+    this.vertexNormalsBuffer = device.createBuffer({
+      label: "vertex normals buffer",
+      size: mesh.vertexNormals.byteLength,
+      usage:
+        GPUBufferUsage.STORAGE |
+        GPUBufferUsage.COPY_DST |
+        GPUBufferUsage.COPY_SRC,
+    });
+
+    /** and the mappable output buffers (I believe that "mappable" is the only way to read from GPU->CPU) */
+    this.mappableVerticesResultBuffer = device.createBuffer({
+      label: "mappable vertices result buffer",
+      size: mesh.vertices.byteLength,
+      usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+    });
+    this.mappableFacetNormalsResultBuffer = device.createBuffer({
+      label: "mappable facet normals result buffer",
+      size: mesh.facetNormals.byteLength,
+      usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+    });
+    this.mappableVertexNormalsResultBuffer = device.createBuffer({
+      label: "mappable vertex normals result buffer",
+      size: mesh.vertexNormals.byteLength,
+      usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+    });
+  }
+
+  createBindGroups() {
+    /** Set up bindGroups per compute kernel to tell the shader which buffers to use */
+    /** I had hoped to do all verticesBuffer bindings as slices as below,
+     * but buffer alignment restrictions appear to make this impossible.
+     *   Offset (25568) of [Buffer "vertex buffer"] does not satisfy the minimum
+     *   BufferBindingType::Storage alignment (256).
+     * This particular bindGroup is OK because it's always at the beginning of
+     * verticesBuffer.
+     */
+    // TODO compute this using sizeof() so it's not hardcoded
+    const bytesPerVertex = mesh.vertexSize * 4;
+    this.perturbBindGroup = device.createBindGroup({
+      label: "bindGroup for perturb input vertices kernel",
+      layout: perturbPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: uniformsBuffer } },
+        {
+          binding: 1,
+          resource: {
+            buffer: this.verticesBuffer,
+            offset: 0,
+            size: mesh.levelCount[0].v * bytesPerVertex,
+          },
+        },
+      ],
+    });
+
+    this.faceBindGroup = device.createBindGroup({
+      label: `bindGroup for face kernel`,
+      layout: facePipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: uniformsBuffer } },
+        { binding: 1, resource: { buffer: this.verticesBuffer } },
+        { binding: 2, resource: { buffer: this.baseFacesBuffer } },
+        { binding: 3, resource: { buffer: this.baseFaceOffsetBuffer } },
+        { binding: 4, resource: { buffer: this.baseFaceValenceBuffer } },
+      ],
+    });
+
+    this.edgeBindGroup = device.createBindGroup({
+      label: "bindGroup for edge kernel",
+      layout: edgePipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: uniformsBuffer } },
+        { binding: 1, resource: { buffer: this.verticesBuffer } },
+        { binding: 2, resource: { buffer: this.baseEdgesBuffer } },
+      ],
+    });
+
+    this.vertexBindGroup = device.createBindGroup({
+      label: "bindGroup for vertex kernel",
+      layout: vertexPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: uniformsBuffer } },
+        { binding: 1, resource: { buffer: this.verticesBuffer } },
+        { binding: 2, resource: { buffer: this.baseVerticesBuffer } },
+        { binding: 3, resource: { buffer: this.baseVertexOffsetBuffer } },
+        { binding: 4, resource: { buffer: this.baseVertexValenceBuffer } },
+        { binding: 5, resource: { buffer: this.baseVertexIndexBuffer } },
+      ],
+    });
+
+    this.facetNormalsBindGroup = device.createBindGroup({
+      label: "bindGroup for computing facet normals",
+      layout: facetNormalsPipeline.getBindGroupLayout(0),
+      entries: [
+        // { binding: 0, resource: { buffer: uniformsBuffer } },
+        { binding: 1, resource: { buffer: this.facetNormalsBuffer } },
+        { binding: 2, resource: { buffer: this.verticesBuffer } },
+        { binding: 3, resource: { buffer: this.triangleIndicesBuffer } },
+      ],
+    });
+
+    this.vertexNormalsBindGroup = device.createBindGroup({
+      label: "bindGroup for computing vertex normals",
+      layout: vertexNormalsPipeline.getBindGroupLayout(0),
+      entries: [
+        // { binding: 0, resource: { buffer: uniformsBuffer } },
+        { binding: 1, resource: { buffer: this.vertexNormalsBuffer } },
+        { binding: 2, resource: { buffer: this.facetNormalsBuffer } },
+        { binding: 3, resource: { buffer: this.triangleIndicesBuffer } },
+      ],
+    });
+
+    this.renderBindGroup = device.createBindGroup({
+      label: "bindGroup for rendering kernel",
+      layout: renderPipeline.getBindGroupLayout(0),
+      entries: [{ binding: 0, resource: { buffer: mvxBuffer } }],
+    });
+  }
+
+  writeToGPUBuffers() {
+    device.queue.writeBuffer(this.baseFacesBuffer, 0, mesh.faces);
+    device.queue.writeBuffer(this.baseEdgesBuffer, 0, mesh.edges);
+    device.queue.writeBuffer(this.baseFaceOffsetBuffer, 0, mesh.faceOffset);
+    device.queue.writeBuffer(this.baseFaceValenceBuffer, 0, mesh.faceValence);
+    device.queue.writeBuffer(this.baseVerticesBuffer, 0, mesh.baseVertices);
+    device.queue.writeBuffer(this.baseVertexOffsetBuffer, 0, mesh.vertexOffset);
+    device.queue.writeBuffer(
+      this.baseVertexValenceBuffer,
+      0,
+      mesh.vertexValence
+    );
+    device.queue.writeBuffer(this.baseVertexIndexBuffer, 0, mesh.vertexIndex);
+    device.queue.writeBuffer(this.triangleIndicesBuffer, 0, mesh.triangles);
+    device.queue.writeBuffer(this.verticesBuffer, 0, mesh.vertices);
+    device.queue.writeBuffer(this.facetNormalsBuffer, 0, mesh.facetNormals);
+    device.queue.writeBuffer(this.vertexNormalsBuffer, 0, mesh.vertexNormals);
+    uni.set({ levelCount: mesh.levelCount, levelBasePtr: mesh.levelBasePtr });
+  }
+  constructor(mesh) {
+    this.createGPUBuffers();
+    this.writeToGPUBuffers();
+    this.createBindGroups();
+  }
+}
+
+const mvxLength = 4 * 16; /* float32 4x4 matrix */
+const mvxBuffer = device.createBuffer({
+  label: "modelview + transformation matrix uniform buffer",
+  size: mvxLength,
+  usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+});
+// write happens at the start of every frame
+
+let ctx = new GPUContext(mesh);
 
 /** there are a TON of things in this frame() call that
  * can probably be moved outside the call
@@ -890,37 +907,37 @@ async function frame() {
     label: "compute pass, all compute kernels",
   });
   computePass.setPipeline(perturbPipeline);
-  computePass.setBindGroup(0, perturbBindGroup);
+  computePass.setBindGroup(0, ctx.perturbBindGroup);
   computePass.dispatchWorkgroups(
     Math.ceil(mesh.levelCount[0].v / WORKGROUP_SIZE)
   );
 
   computePass.setPipeline(facePipeline);
-  computePass.setBindGroup(0, faceBindGroup);
+  computePass.setBindGroup(0, ctx.faceBindGroup);
   computePass.dispatchWorkgroups(
     Math.ceil(mesh.levelCount[1].f / WORKGROUP_SIZE)
   );
 
   computePass.setPipeline(edgePipeline);
-  computePass.setBindGroup(0, edgeBindGroup);
+  computePass.setBindGroup(0, ctx.edgeBindGroup);
   computePass.dispatchWorkgroups(
     Math.ceil(mesh.levelCount[1].e / WORKGROUP_SIZE)
   );
 
   computePass.setPipeline(vertexPipeline);
-  computePass.setBindGroup(0, vertexBindGroup);
+  computePass.setBindGroup(0, ctx.vertexBindGroup);
   computePass.dispatchWorkgroups(
     Math.ceil(mesh.levelCount[1].v / WORKGROUP_SIZE)
   );
 
   computePass.setPipeline(facetNormalsPipeline);
-  computePass.setBindGroup(0, facetNormalsBindGroup);
+  computePass.setBindGroup(0, ctx.facetNormalsBindGroup);
   computePass.dispatchWorkgroups(
     Math.ceil((mesh.levelCount[0].t + mesh.levelCount[1].t) / WORKGROUP_SIZE)
   );
 
   computePass.setPipeline(vertexNormalsPipeline);
-  computePass.setBindGroup(0, vertexNormalsBindGroup);
+  computePass.setBindGroup(0, ctx.vertexNormalsBindGroup);
   computePass.dispatchWorkgroups(
     // XXX FIX this is probably broken, wrong size
     Math.ceil(mesh.vertices.length / WORKGROUP_SIZE)
@@ -973,13 +990,13 @@ async function frame() {
 
   // Now render those tris.
   renderPass.setPipeline(renderPipeline);
-  renderPass.setBindGroup(0, renderBindGroup);
-  renderPass.setVertexBuffer(0, verticesBuffer);
+  renderPass.setBindGroup(0, ctx.renderBindGroup);
+  renderPass.setVertexBuffer(0, ctx.verticesBuffer);
   let startIdx = -1;
   let endIdx = -1;
   const now = uni.views.time[0];
 
-  renderPass.setIndexBuffer(triangleIndicesBuffer, "uint32");
+  renderPass.setIndexBuffer(ctx.triangleIndicesBuffer, "uint32");
   // next line switches every TOGGLE_DURATION frames
   // switch ((now / uni.views.TOGGLE_DURATION) & 1) {
   // instead switch explicitly on subdivLevel
