@@ -58,35 +58,17 @@ class SubdivMesh {
         facesIn.length,
         facesIn.length + verticesIn.length - 2,
         verticesIn.length,
-        -1
+        0 // triangle starting point
       ),
     ];
     // the only points in the vertex buffer @ level 0 are vertices, so all offsets are 0
-    this.levelBasePtr = [new Level(0, 0, 0, -1)];
+    this.levelBasePtr = [new Level(0, 0, 0, 0)];
 
     var level = 1;
-    this.levelCount.push(
-      new Level( // f, e, v, t
-        this.levelCount[level - 1].f,
-        this.levelCount[level - 1].f + this.levelCount[level - 1].v - 2, // assumes manifold surface!
-        this.levelCount[level - 1].v,
-        0
-      )
-    );
-    this.levelBasePtr.push(
-      new Level(
-        this.levelCount[level - 1].v,
-        this.levelCount[level - 1].v + this.levelCount[level].f,
-        this.levelCount[level - 1].v +
-          this.levelCount[level].f +
-          this.levelCount[level].e,
-        -1
-      )
-    );
 
     this.scaleInput = true;
     this.largestInput = 0.0;
-    this.maxLevel = 2; // valid levels are <= maxLevel
+    this.maxLevel = 1; // valid levels are <= maxLevel
 
     // OBJ stores faces in CCW order
     // The OBJ (or .OBJ) file format stores vertices in a counterclockwise order by default. This means that if the vertices are ordered counterclockwise around a face, both the face and the normal will point toward the viewer. If the vertices are ordered clockwise, both will point away from the viewer.
@@ -153,12 +135,25 @@ class SubdivMesh {
       this.levelCount[0].t += valence - 2;
     }
     for (level = 1; level <= this.maxLevel; level++) {
-      // we expect that glLevel{Count,BasePtr}[level] are already populated
-      // but vertices array has not been lengthened yet
+      /** Responsibilities in each loop:
+       * - Push and populate a new level{Count,BasePtr}[level]
+       * - Lengthen vertices array
+       */
 
-      this.verticesSize = this.levelBasePtr[level].v + this.levelCount[level].v;
-      // this seems weird, but I can just lengthen an array by setting its length?
-      this.vertices.length = this.verticesSize * this.vertexSize;
+      // f, e, v, t
+      this.levelCount.push(
+        new Level(facesInternal[level - 1].length, -1, -1, 0)
+      );
+      this.levelBasePtr.push(
+        new Level(
+          this.levelCount[level - 1].v + this.levelBasePtr[level - 1].v,
+          this.levelCount[level - 1].v +
+            this.levelBasePtr[level - 1].v +
+            this.levelCount[level].f,
+          -1,
+          this.levelCount[level - 1].t + this.levelBasePtr[level - 1].t
+        )
+      );
 
       console.log("Counts:   ", this.levelCount);
       console.log("Base ptr: ", this.levelBasePtr);
@@ -182,9 +177,10 @@ class SubdivMesh {
        * -
        */
       facesInternal[level] = [];
+      const seenVertices = new Set();
       for (
         let i = 0, faceOffset = 0, facePointID = this.levelBasePtr[level].f;
-        i < facesInternal[level - 1].length;
+        i < this.levelCount[level].f;
         i++, facePointID++
       ) {
         // i indexes the face from the previous level
@@ -205,14 +201,11 @@ class SubdivMesh {
             // wraparound, last vertex <-> first one
             end = 0;
           }
-          const edge = edgeToKey(
-            facesInternal[level - 1][i][start],
-            facesInternal[level - 1][i][end]
-          );
-          const edgeRev = edgeToKey(
-            facesInternal[level - 1][i][end],
-            facesInternal[level - 1][i][start]
-          );
+          const startVtx = facesInternal[level - 1][i][start];
+          const endVtx = facesInternal[level - 1][i][end];
+          seenVertices.add(startVtx, endVtx);
+          const edge = edgeToKey(startVtx, endVtx);
+          const edgeRev = edgeToKey(endVtx, startVtx);
           if (edgeToFace.has(edge)) {
             console.log(`ERROR: edge ${edge} already in edgeToFace`);
           }
@@ -230,6 +223,10 @@ class SubdivMesh {
           }
         }
       }
+      this.levelCount[level].e = edgeToEdgeID.size / 2;
+      this.levelCount[level].v = seenVertices.size;
+      this.levelBasePtr[level].v =
+        this.levelBasePtr[level].e + this.levelCount[level].e;
 
       // all faces have been ingested, let's subdivide!
       // XXX WRONG probably want to set vBase smarter than 0
@@ -338,25 +335,9 @@ class SubdivMesh {
         vertexOffset += neighbors.length;
       });
 
-      // finally, populate the next level of level arrays
-      this.levelCount.push(
-        new Level( // f, e, v, t
-          this.levelCount[level - 1].f,
-          this.levelCount[level - 1].f + this.levelCount[level - 1].v - 2, // assumes manifold surface!
-          this.levelCount[level - 1].v,
-          0
-        )
-      );
-      this.levelBasePtr.push(
-        new Level(
-          this.levelCount[level - 1].v,
-          this.levelCount[level - 1].v + this.levelCount[level].f,
-          this.levelCount[level - 1].v +
-            this.levelCount[level].f +
-            this.levelCount[level].e,
-          -1
-        )
-      );
+      this.verticesSize = this.levelBasePtr[level].v + this.levelCount[level].v;
+      // this seems weird, but I can just lengthen an array by setting its length?
+      this.vertices.length = this.verticesSize * this.vertexSize;
     }
 
     // Now wrap everything in JS arrays and return from constructor
