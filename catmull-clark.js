@@ -88,52 +88,6 @@ const modelToURL = {
     "https://gist.githubusercontent.com/jowens/5f7bc872317b5fd5f7d72827967f1c9d/raw/1f846ee3229297520dd855b199d21717e30af91b/stanford-teapot.obj",
 };
 
-const pane = new Pane();
-pane
-  .addBinding(modelParams, "model", {
-    options: {
-      // what it shows : what it returns
-      "Square Pyramid": "square_pyramid",
-      Diamond: "diamond",
-      Teddy: "teddy",
-      Al: "al",
-      "Teapot (Low Res)": "teapot_lowres",
-      "Stanford Teapot": "stanford_teapot",
-    },
-  })
-  .on("change", async (ev) => {
-    mesh = await loadMesh(modelToURL[ev.value]);
-    ctx.destroyGPUBuffers();
-    ctx = new GPUContext(mesh);
-    frame();
-  });
-pane.addBinding(uni.views.ROTATE_CAMERA_SPEED, 0, {
-  min: 0,
-  max: 1,
-  label: "Camera Rotation Speed",
-});
-pane.addBinding(uni.views.TOGGLE_DURATION, 0, {
-  min: 0,
-  max: 1000,
-  label: "Toggle Duration",
-});
-pane.addBinding(uni.views.WIGGLE_MAGNITUDE, 0, {
-  min: 0,
-  max: 0.02,
-  label: "Wiggle Magnitude",
-});
-pane.addBinding(uni.views.WIGGLE_SPEED, 0, {
-  min: 0,
-  max: 1,
-  label: "Wiggle Speed",
-});
-pane.addBinding(uni.views.subdivLevel, 0, {
-  min: 0,
-  max: 1,
-  step: 1,
-  label: "Subdiv Level",
-});
-
 const WORKGROUP_SIZE = 64;
 
 const uniformsBuffer = device.createBuffer({
@@ -860,6 +814,52 @@ class GPUContext {
     this.createBindGroups();
   }
 }
+
+const pane = new Pane();
+pane
+  .addBinding(modelParams, "model", {
+    options: {
+      // what it shows : what it returns
+      "Square Pyramid": "square_pyramid",
+      Diamond: "diamond",
+      Teddy: "teddy",
+      Al: "al",
+      "Teapot (Low Res)": "teapot_lowres",
+      "Stanford Teapot": "stanford_teapot",
+    },
+  })
+  .on("change", async (ev) => {
+    mesh = await loadMesh(modelToURL[ev.value]);
+    ctx.destroyGPUBuffers();
+    ctx = new GPUContext(mesh);
+    frame();
+  });
+pane.addBinding(uni.views.ROTATE_CAMERA_SPEED, 0, {
+  min: 0,
+  max: 1,
+  label: "Camera Rotation Speed",
+});
+pane.addBinding(uni.views.TOGGLE_DURATION, 0, {
+  min: 0,
+  max: 1000,
+  label: "Toggle Duration",
+});
+pane.addBinding(uni.views.WIGGLE_MAGNITUDE, 0, {
+  min: 0,
+  max: 0.02,
+  label: "Wiggle Magnitude",
+});
+pane.addBinding(uni.views.WIGGLE_SPEED, 0, {
+  min: 0,
+  max: 1,
+  label: "Wiggle Speed",
+});
+pane.addBinding(uni.views.subdivLevel, 0, {
+  min: 0,
+  max: mesh.maxLevel,
+  step: 1,
+  label: "Subdiv Level",
+});
 
 const mvxLength = 4 * 16; /* float32 4x4 matrix */
 const mvxBuffer = device.createBuffer({
