@@ -71,7 +71,7 @@ uni.set({
 });
 
 const modelParams = {
-  model: "Square Pyramid",
+  model: "square_pyramid", // default starting point
 };
 
 const modelToURL = {
@@ -103,6 +103,7 @@ pane
   })
   .on("change", async (ev) => {
     mesh = await loadMesh(modelToURL[ev.value]);
+    ctx.destroyGPUBuffers();
     ctx = new GPUContext(mesh);
     frame();
   });
@@ -619,27 +620,7 @@ async function loadMesh(url) {
   return mesh;
 }
 
-// square pyramid
-const objurl1 =
-  "https://gist.githubusercontent.com/jowens/ccd142c4d17e6c188c5105a1881561bf/raw/26e58cb754d1dfb8c30c86d33e0c21497c2167e8/square-pyramid.obj";
-// diamond
-const objurl2 =
-  "https://gist.githubusercontent.com/jowens/ebe82add66adfee31fe49579963c515d/raw/2046cff529575615e32a283a9ca2b4e44f3a13d2/diamond.obj";
-// teddy
-const objurl3 =
-  "https://gist.githubusercontent.com/jowens/d49b13c7f847bda5ffc36d2166888b5f/raw/2756e4e3c5be3b2cce35244c961f462411cefaef/teddy.obj";
-// al
-const objurl4 =
-  "https://gist.githubusercontent.com/jowens/360d591b8484958cf1c5b015c96c0958/raw/6390f2a2c720d378d1aa77baba7605c67d40e2e4/al.obj";
-// teapot-lower
-const objurl5 =
-  "https://gist.githubusercontent.com/jowens/508d6d7f70b33010508f3c679abd61ff/raw/0315c1d585a63687034ae4deecb5b49b8d653017/teapot-lower.obj";
-// stanford-teapot
-const objurl6 =
-  "https://gist.githubusercontent.com/jowens/5f7bc872317b5fd5f7d72827967f1c9d/raw/1f846ee3229297520dd855b199d21717e30af91b/stanford-teapot.obj";
-const objurl7 = "http://localhost:8000/meshes/ogre.obj";
-
-let mesh = await loadMesh(objurl4);
+let mesh = await loadMesh(modelToURL[modelParams.model]);
 
 class GPUContext {
   createGPUBuffers() {
@@ -856,6 +837,23 @@ class GPUContext {
     device.queue.writeBuffer(this.vertexNormalsBuffer, 0, mesh.vertexNormals);
     uni.set({ levelCount: mesh.levelCount, levelBasePtr: mesh.levelBasePtr });
   }
+  destroyGPUBuffers() {
+    this.baseFacesBuffer.destroy();
+    this.baseEdgesBuffer.destroy();
+    this.baseFaceOffsetBuffer.destroy();
+    this.baseFaceValenceBuffer.destroy();
+    this.baseVerticesBuffer.destroy();
+    this.baseVertexOffsetBuffer.destroy();
+    this.baseVertexValenceBuffer.destroy();
+    this.baseVertexIndexBuffer.destroy();
+    this.triangleIndicesBuffer.destroy();
+    this.verticesBuffer.destroy();
+    this.facetNormalsBuffer.destroy();
+    this.vertexNormalsBuffer.destroy();
+    this.mappableVerticesResultBuffer.destroy();
+    this.mappableVertexNormalsResultBuffer.destroy();
+    this.mappableVertexNormalsResultBuffer.destroy();
+  }
   constructor(mesh) {
     this.createGPUBuffers();
     this.writeToGPUBuffers();
@@ -873,11 +871,6 @@ const mvxBuffer = device.createBuffer({
 
 let ctx = new GPUContext(mesh);
 
-/** there are a TON of things in this frame() call that
- * can probably be moved outside the call
- *
- * I need to know what those are!
- */
 async function frame() {
   /**
    * Definitely there's two things that need to go CPU->GPU every frame
