@@ -37,6 +37,8 @@ class SubdivMesh {
     /* strategy: build everything up as JS objects and then lower to Arrays on return */
     this.vertices = [];
     this.verticesReset = [];
+    const facesInternal = []; // indexed by [level][face]
+    facesInternal[0] = [];
     this.faces = []; // indexed per vertex
     this.triangles = [];
     this.faceValence = [];
@@ -48,13 +50,44 @@ class SubdivMesh {
     this.vertexIndex = [];
     this.vertexSize = 4; // # elements per vertex (ignore w coord for now)
     this.normalSize = 4; // float4s (ignore w coord for now)
-    const initialVertexCount = verticesIn.length;
-    this.levelCount = [new Level(0, 0, initialVertexCount, 0)];
+
+    // populate first TWO levels of levelCount and levelBasePtr
+    // assumes manifold surface!
+    this.levelCount = [
+      new Level(
+        facesIn.length,
+        facesIn.length + verticesIn.length - 2,
+        verticesIn.length,
+        -1
+      ),
+    ];
+    // the only points in the vertex buffer @ level 0 are vertices, so all offsets are 0
     this.levelBasePtr = [new Level(0, 0, 0, -1)];
+
+    var level = 1;
+    this.levelCount.push(
+      new Level( // f, e, v, t
+        this.levelCount[level - 1].f,
+        this.levelCount[level - 1].f + this.levelCount[level - 1].v - 2, // assumes manifold surface!
+        this.levelCount[level - 1].v,
+        0
+      )
+    );
+    this.levelBasePtr.push(
+      new Level(
+        this.levelCount[level - 1].v,
+        this.levelCount[level - 1].v + this.levelCount[level].f,
+        this.levelCount[level - 1].v +
+          this.levelCount[level].f +
+          this.levelCount[level].e,
+        -1
+      )
+    );
+
     this.scaleInput = true;
     this.largestInput = 0.0;
-    this.maxLevel = 1; // valid levels are <= maxLevel
-    const level = 1; // will loop through levels later
+    this.maxLevel = 2; // valid levels are <= maxLevel
+
     // OBJ stores faces in CCW order
     // The OBJ (or .OBJ) file format stores vertices in a counterclockwise order by default. This means that if the vertices are ordered counterclockwise around a face, both the face and the normal will point toward the viewer. If the vertices are ordered clockwise, both will point away from the viewer.
     // this means that going in declaration order means face is on the LEFT
@@ -94,84 +127,20 @@ class SubdivMesh {
     this.vertices = this.vertices.map((num) => (num == -0 ? 0 : num));
     this.verticesReset = this.vertices.slice();
 
-    /** calculating these offsets and lengths is a pain,
-     * because we really have to walk the entire input data
-     * structure just to get the counts
-     *
-     * also we will have different ways to do this between
-     * the initial read data structure from the file and
-     * our internal data structure
-     *
-     * one possibility will be to convert the .obj data
-     * structure to ours at the outset, and then have uniform
-     * handling as we loop
-     *
-     * another possibility is to have loops at the beginning
-     * of the level calculation that just compute all the
-     * counts/offsets
-     */
-    this.levelCount.push(
-      new Level( // f, e, v, t
-        facesIn.length,
-        facesIn.length + initialVertexCount - 2,
-        initialVertexCount,
-        0
-      )
-    );
-    this.levelBasePtr.push(
-      new Level(
-        initialVertexCount,
-        initialVertexCount + this.levelCount[level].f,
-        initialVertexCount +
-          this.levelCount[level].f +
-          this.levelCount[level].e,
-        -1
-      )
-    );
-
-    this.verticesSize = this.levelBasePtr[level].v + this.levelCount[level].v;
-    // this seems weird, but I can just lengthen an array by setting its length?
-    this.vertices.length = this.verticesSize * this.vertexSize;
-
-    console.log("Counts:   ", this.levelCount);
-    console.log("Base ptr: ", this.levelBasePtr);
-
-    let edgePointID = this.levelBasePtr[1].e;
-    // edgeToFace: [v_start,v_end] -> face on left
-    const edgeToFace = new Map();
-    // edgePointID: [v_start,v_end] -> edgePointID
-    const edgeToEdgeID = new Map();
-
-    /* how many edges are there? Could compute in two ways:
-     * - Euler characteristic E = V + F - 2 (manifold only)
-     * - Walk through faces, count edges
-     */
-
-    for (
-      let i = 0, faceOffset = 0, fPointsPtr = this.levelBasePtr[level].f;
-      i < facesIn.length;
-      i++, fPointsPtr++
-    ) {
-      // i indexes the face from the input file
-      // faceOffset indexes individual vertices within the faces
-      //   in the input file
-      // fPointsPtr indexes into the output vertex array
-      this.faceOffset.push(faceOffset);
-      this.faceValence.push(facesIn[i].vertices.length);
-      faceOffset += facesIn[i].vertices.length;
-      const thisFacePtr = this.faces.length;
-      for (let j = 0; j < facesIn[i].vertices.length; j++) {
-        // here is where we do the 1-indexed to 0-indexed conversion
-        //   (the vertexIndex - 1 below)
-        // if we wanted normals or texture coordinates from the obj
-        // file, here's where we'd record them
-        this.faces.push(facesIn[i].vertices[j].vertexIndex - 1);
-      }
+    /* Now do initial processing of faces */
+    // convert 1-indexed to 0-indexed, copy into facesInternal
+    for (let i = 0; i < facesIn.length; i++) {
+      facesInternal[0].push(
+        facesIn[i].vertices.map((vtx) => vtx.vertexIndex - 1)
+      );
+      // if we had normals or texture coords, deal with them here
+      this.faces.push(...facesInternal[0][i]);
       /**
-       * Turn those faces into triangles; support arbitrary valence.
+       * Now turn those faces into triangles; support arbitrary valence.
        * There are probably smarter ways to go face->triangles
+       *   e.g., look at convexity
        */
-      const valence = facesIn[i].vertices.length;
+      const valence = facesInternal[0][i].length;
       for (let j = 2 - valence; j != 0; j++) {
         this.triangles.push(
           this.faces.at(-valence),
@@ -182,139 +151,215 @@ class SubdivMesh {
         );
       }
       this.levelCount[0].t += valence - 2;
-
-      // same loop through vertices in this face,
-      // but record edges this time
-      const vBase = thisFacePtr;
-      for (let j = 0; j < facesIn[i].vertices.length; j++) {
-        const start = vBase + j;
-        let end = start + 1;
-        if (end >= this.faces.length) {
-          // wraparound, last vertex <-> first one
-          end = vBase;
-        }
-        const edge = edgeToKey(this.faces[start], this.faces[end]);
-        const edgeRev = edgeToKey(this.faces[end], this.faces[start]);
-        if (edgeToFace.has(edge)) {
-          console.log(`ERROR: edge ${edge} already in edgeToFace`);
-        }
-        edgeToFace.set(edge, fPointsPtr);
-        /**  in a manifold mesh, each edge will be set twice, so it's
-         *   OK if it's already set; but if it sets here, it better set twice */
-        if (edgeToEdgeID.has(edge) ^ edgeToEdgeID.has(edgeRev)) {
-          console.log(
-            `ERROR: Inconsistent edges in edgeToEdgeID: ${edge}, ${edgeRev}`
-          );
-        } else if (!edgeToEdgeID.has(edge)) {
-          edgeToEdgeID.set(edge, edgePointID);
-          edgeToEdgeID.set(edgeRev, edgePointID);
-          edgePointID++;
-        }
-      }
     }
+    for (level = 1; level <= this.maxLevel; level++) {
+      // we expect that glLevel{Count,BasePtr}[level] are already populated
+      // but vertices array has not been lengthened yet
 
-    // all faces have been ingested, let's subdivide!
-    // XXX WRONG probably want to set vBase smarter than 0
-    for (
-      let vBase = 0, i = 0, fPointsPtr = this.levelBasePtr[level].f;
-      i < facesIn.length;
-      vBase += facesIn[i].vertices.length, i++, fPointsPtr++
-    ) {
-      // to make nomenclature easier, let's have tiny functions v and e
-      // they have to be arrow functions to inherit "this" from the surrounding scope
-      const v = (idx) => {
-        return this.levelBasePtr[level].v + this.faces[vBase + idx];
-      };
-      const e = (v0, v1) => {
-        const key = edgeToKey(this.faces[vBase + v0], this.faces[vBase + v1]);
-        if (!edgeToEdgeID.has(key)) {
-          console.log(
-            `ERROR: edgeToKey (${v0}, ${v1}) does not have key ${key} `
-          );
-        }
-        return edgeToEdgeID.get(key);
-      };
-      /* now we do the subdivision, push both quads and triangles */
-      const mod = (n, d) => {
-        return ((n % d) + d) % d;
-      };
-      const valence = facesIn[i].vertices.length;
-      /** this looks more complicated than it is
-       * for quads (e.g.) the first 2 faces are:
-       *   fPointsPtr, e(3,0), v(0), v(0,1)
-       *   fPointsPtr, e(1,0), v(1), v(1,2)
+      this.verticesSize = this.levelBasePtr[level].v + this.levelCount[level].v;
+      // this seems weird, but I can just lengthen an array by setting its length?
+      this.vertices.length = this.verticesSize * this.vertexSize;
+
+      console.log("Counts:   ", this.levelCount);
+      console.log("Base ptr: ", this.levelBasePtr);
+
+      let edgePointID = this.levelBasePtr[level].e;
+      // edgeToFace: [v_start,v_end] -> face on left
+      const edgeToFace = new Map();
+      // edgePointID: [v_start,v_end] -> edgePointID
+      const edgeToEdgeID = new Map();
+
+      /* how many edges are there? Could compute in two ways:
+       * - Euler characteristic E = V + F - 2 (manifold only)
+       * - Walk through faces, count edges
        */
-      for (let j = 0; j < valence; j++) {
-        this.faces.push(
-          /* one quad (per vertex of input face) */
-          fPointsPtr,
-          e(mod(j - 1, valence), j),
-          v(j),
-          e(j, mod(j + 1, valence))
-        );
-        this.triangles.push(
-          /** there exists likely a smarter way of subdividing the quad:
-           * what if (e.g.) it's non-convex? we should measure
-           * both diagonals before deciding */
-          /* first tri of above quad */
-          fPointsPtr,
-          e(mod(j - 1, valence), j),
-          v(j),
-          /* second tri of above quad */
-          fPointsPtr,
-          v(j),
-          e(j, mod(j + 1, valence))
-        );
-      }
-      this.levelCount[level].t += valence * 2;
-    }
-    // now we have a map (edgeToFace) full of {edge -> face}
-    //   and a map (edgeToEdgeID) full of {edge -> edgeID}
-    // we iterate over edgeToEdgeID because its entry order
-    //   is the canonical order
-    edgeToEdgeID.forEach((edgeID, edge) => {
-      const v = edge.split(",").map((n) => parseInt(n, 10));
-      const reverseEdge = edgeToKey(v[1], v[0]);
-      if (
-        !edgeToFace.has(reverseEdge) ||
-        !edgeToFace.has(edge) ||
-        !edgeToEdgeID.has(reverseEdge)
-      ) {
-        // if we have a manifold mesh, every edge has two faces, one
-        //   in each direction of the edge
-        // let's assert that
-        console.log("ERROR: non-manifold surface");
-        if (!edgeToFace.has(edge)) {
-          console.log("  ", edge, " not in edgeToFace (edge)");
-        }
-        if (!edgeToFace.has(reverseEdge)) {
-          console.log("  ", reverseEdge, " not in edgeToFace (reverseEdge)");
-        }
-        if (!edgeToEdgeID.has(reverseEdge)) {
-          console.log("  ", reverseEdge, " not in edgeToEdgeID (reverseEdge)");
-        }
-      }
-      const f = [edgeToFace.get(edge), edgeToFace.get(reverseEdge)];
-      // push into edge array: v[0], f[0], v[1], f[1]
-      // iterating through edgeToEdgeID ensures a consistent order
-      if (f[1] > f[0]) {
-        // in Niessner, all edges have f[1] > f[0]
-        this.edges.push(v[0], f[0], v[1], f[1]);
-        vertexNeighborsMap.get(v[0]).push(v[1], f[1]);
-        vertexNeighborsMap.get(v[1]).push(v[0], f[0]);
-      }
-    });
 
-    // now we populate baseVertices
-    var vertexOffset = 0;
-    vertexNeighborsMap.forEach((neighbors, vertex) => {
-      this.vertexIndex.push(vertex);
-      this.baseVertices.push(neighbors);
-      this.vertexValence.push(neighbors.length / 2);
-      this.vertexOffset.push(vertexOffset);
-      vertexOffset += neighbors.length;
-    });
-    // Now wrap everything in JS arrays
+      /** face loop: goals are
+       * - populate face{Valence, Offset}
+       * - make a list of edges
+       * input is faces from previous level (facesInternal)
+       * outputs are:
+       * -
+       */
+      facesInternal[level] = [];
+      for (
+        let i = 0, faceOffset = 0, facePointID = this.levelBasePtr[level].f;
+        i < facesInternal[level - 1].length;
+        i++, facePointID++
+      ) {
+        // i indexes the face from the previous level
+        // faceOffset indexes individual vertices within the face
+        // fPointsPtr indexes into the output vertex array
+        this.faceOffset.push(faceOffset);
+        this.faceValence.push(facesInternal[level - 1][i].length);
+        faceOffset += facesInternal[level - 1][i].length;
+        const thisFacePtr = this.faces.length;
+
+        // now loop through vertices in this face, recording edges
+        const vBase = thisFacePtr;
+        const faceLen = facesInternal[level - 1][i].length;
+        for (let j = 0; j < faceLen; j++) {
+          let start = j;
+          let end = start + 1;
+          if (end >= faceLen) {
+            // wraparound, last vertex <-> first one
+            end = 0;
+          }
+          const edge = edgeToKey(
+            facesInternal[level - 1][i][start],
+            facesInternal[level - 1][i][end]
+          );
+          const edgeRev = edgeToKey(
+            facesInternal[level - 1][i][end],
+            facesInternal[level - 1][i][start]
+          );
+          if (edgeToFace.has(edge)) {
+            console.log(`ERROR: edge ${edge} already in edgeToFace`);
+          }
+          edgeToFace.set(edge, facePointID);
+          /**  in a manifold mesh, each edge will be set twice, so it's
+           *   OK if it's already set; but if it sets here, it better be set twice */
+          if (edgeToEdgeID.has(edge) ^ edgeToEdgeID.has(edgeRev)) {
+            console.log(
+              `ERROR: Inconsistent edges in edgeToEdgeID: ${edge}, ${edgeRev}`
+            );
+          } else if (!edgeToEdgeID.has(edge)) {
+            edgeToEdgeID.set(edge, edgePointID);
+            edgeToEdgeID.set(edgeRev, edgePointID);
+            edgePointID++;
+          }
+        }
+      }
+
+      // all faces have been ingested, let's subdivide!
+      // XXX WRONG probably want to set vBase smarter than 0
+      for (
+        let vBase = 0, i = 0, fPointsPtr = this.levelBasePtr[level].f;
+        i < facesInternal[level - 1].length;
+        vBase += facesInternal[level - 1][i].length, i++, fPointsPtr++
+      ) {
+        // to make nomenclature easier, let's have tiny functions v and e
+        // they have to be arrow functions to inherit "this" from the surrounding scope
+        const v = (idx) => {
+          return this.levelBasePtr[level].v + this.faces[vBase + idx];
+        };
+        const e = (v0, v1) => {
+          const key = edgeToKey(this.faces[vBase + v0], this.faces[vBase + v1]);
+          if (!edgeToEdgeID.has(key)) {
+            console.log(
+              `ERROR: edgeToKey (${v0}, ${v1}) does not have key ${key} `
+            );
+          }
+          return edgeToEdgeID.get(key);
+        };
+        /* now we do the subdivision, push both quads and triangles */
+        const mod = (n, d) => {
+          return ((n % d) + d) % d;
+        };
+        const valence = facesInternal[level - 1][i].length;
+        /** this looks more complicated than it is
+         * for quads (e.g.) the first 2 faces are:
+         *   fPointsPtr, e(3,0), v(0), v(0,1)
+         *   fPointsPtr, e(1,0), v(1), v(1,2)
+         */
+        for (let j = 0; j < valence; j++) {
+          facesInternal[level].push([
+            /* one quad (per vertex of input face) */
+            fPointsPtr,
+            e(mod(j - 1, valence), j),
+            v(j),
+            e(j, mod(j + 1, valence)),
+          ]);
+          this.faces.push(...facesInternal[level].at(-1)); // same as above
+          this.triangles.push(
+            /** there exists likely a smarter way of subdividing the quad:
+             * what if (e.g.) it's non-convex? we should measure
+             * both diagonals before deciding */
+            /* first tri of above quad */
+            fPointsPtr,
+            e(mod(j - 1, valence), j),
+            v(j),
+            /* second tri of above quad */
+            fPointsPtr,
+            v(j),
+            e(j, mod(j + 1, valence))
+          );
+        }
+        this.levelCount[level].t += valence * 2;
+      }
+      // now we have a map (edgeToFace) full of {edge -> face}
+      //   and a map (edgeToEdgeID) full of {edge -> edgeID}
+      // we iterate over edgeToEdgeID because its entry order
+      //   is the canonical order
+      edgeToEdgeID.forEach((edgeID, edge) => {
+        const v = edge.split(",").map((n) => parseInt(n, 10));
+        const reverseEdge = edgeToKey(v[1], v[0]);
+        if (
+          !edgeToFace.has(reverseEdge) ||
+          !edgeToFace.has(edge) ||
+          !edgeToEdgeID.has(reverseEdge)
+        ) {
+          // if we have a manifold mesh, every edge has two faces, one
+          //   in each direction of the edge
+          // let's assert that
+          console.log("ERROR: non-manifold surface");
+          if (!edgeToFace.has(edge)) {
+            console.log("  ", edge, " not in edgeToFace (edge)");
+          }
+          if (!edgeToFace.has(reverseEdge)) {
+            console.log("  ", reverseEdge, " not in edgeToFace (reverseEdge)");
+          }
+          if (!edgeToEdgeID.has(reverseEdge)) {
+            console.log(
+              "  ",
+              reverseEdge,
+              " not in edgeToEdgeID (reverseEdge)"
+            );
+          }
+        }
+        const f = [edgeToFace.get(edge), edgeToFace.get(reverseEdge)];
+        // push into edge array: v[0], f[0], v[1], f[1]
+        // iterating through edgeToEdgeID ensures a consistent order
+        if (f[1] > f[0]) {
+          // in Niessner, all edges have f[1] > f[0]
+          this.edges.push(v[0], f[0], v[1], f[1]);
+          vertexNeighborsMap.get(v[0]).push(v[1], f[1]);
+          vertexNeighborsMap.get(v[1]).push(v[0], f[0]);
+        }
+      });
+
+      // now we populate baseVertices
+      var vertexOffset = 0;
+      vertexNeighborsMap.forEach((neighbors, vertex) => {
+        this.vertexIndex.push(vertex);
+        this.baseVertices.push(neighbors);
+        this.vertexValence.push(neighbors.length / 2);
+        this.vertexOffset.push(vertexOffset);
+        vertexOffset += neighbors.length;
+      });
+
+      // finally, populate the next level of level arrays
+      this.levelCount.push(
+        new Level( // f, e, v, t
+          this.levelCount[level - 1].f,
+          this.levelCount[level - 1].f + this.levelCount[level - 1].v - 2, // assumes manifold surface!
+          this.levelCount[level - 1].v,
+          0
+        )
+      );
+      this.levelBasePtr.push(
+        new Level(
+          this.levelCount[level - 1].v,
+          this.levelCount[level - 1].v + this.levelCount[level].f,
+          this.levelCount[level - 1].v +
+            this.levelCount[level].f +
+            this.levelCount[level].e,
+          -1
+        )
+      );
+    }
+
+    // Now wrap everything in JS arrays and return from constructor
     this.vertices = new Float32Array(this.vertices);
     this.vertexNormals = new Float32Array(this.verticesSize * this.normalSize); // empty
     this.facetNormals = new Float32Array( // empty
