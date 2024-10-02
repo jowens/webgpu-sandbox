@@ -300,6 +300,7 @@ const vertexPointsModule = device.createShaderModule({
     @group(0) @binding(3) var<storage, read> baseVertexOffset: array<u32>;
     @group(0) @binding(4) var<storage, read> baseVertexValence: array<u32>;
     @group(0) @binding(5) var<storage, read> baseVertexIndex: array<u32>;
+    @group(0) @binding(6) var<storage, read> baseVertexOffsetPtr: array<u32>;
 
     /** "We use an index buffer containing the indices of the incident edge and
      * vertex points."
@@ -311,15 +312,16 @@ const vertexPointsModule = device.createShaderModule({
       @builtin(global_invocation_id) id: vec3u) {
         let i = id.x;
         if (i < myUniforms.levelCount[myUniforms.level].v) {
+          let in = i + baseVertexOffsetPtr[myUniforms.level];
           let out = i + myUniforms.levelBasePtr[myUniforms.level].v;
-          let valence = baseVertexValence[i];
+          let valence = baseVertexValence[in];
           vertices[out] = vec3f(0,0,0);
-          for (var j: u32 = baseVertexOffset[i]; j < baseVertexOffset[i] + 2 * baseVertexValence[i]; j++) {
+          for (var j: u32 = baseVertexOffset[in]; j < baseVertexOffset[in] + 2 * baseVertexValence[in]; j++) {
             let baseVertex = baseVertices[j];
             vertices[out] += vertices[baseVertex];
           }
           vertices[out] /= f32(valence);
-          vertices[out] += f32(valence - 2) * vertices[baseVertexIndex[i]];
+          vertices[out] += f32(valence - 2) * vertices[baseVertexIndex[in]];
           vertices[out] /= f32(valence);
           // TODO: decide on vec3f or vec4f and set w if so
       }
@@ -622,6 +624,12 @@ class GPUContext {
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
+    this.baseVertexOffsetPtrBuffer = device.createBuffer({
+      label: "base vertex offset",
+      size: mesh.vertexOffsetPtr.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+
     this.baseVerticesBuffer = device.createBuffer({
       label: "base vertices buffer",
       size: mesh.baseVertices.byteLength,
@@ -761,6 +769,7 @@ class GPUContext {
         { binding: 3, resource: { buffer: this.baseVertexOffsetBuffer } },
         { binding: 4, resource: { buffer: this.baseVertexValenceBuffer } },
         { binding: 5, resource: { buffer: this.baseVertexIndexBuffer } },
+        { binding: 6, resource: { buffer: this.baseVertexOffsetPtrBuffer } },
       ],
     });
 
@@ -807,6 +816,11 @@ class GPUContext {
       0,
       mesh.edgeOffsetPtr
     );
+    device.queue.writeBuffer(
+      this.baseVertexOffsetPtrBuffer,
+      0,
+      mesh.vertexOffsetPtr
+    );
     device.queue.writeBuffer(this.baseFaceValenceBuffer, 0, mesh.faceValence);
     device.queue.writeBuffer(this.baseVerticesBuffer, 0, mesh.baseVertices);
     device.queue.writeBuffer(this.baseVertexOffsetBuffer, 0, mesh.vertexOffset);
@@ -828,6 +842,7 @@ class GPUContext {
     this.baseFaceOffsetBuffer.destroy();
     this.baseFaceOffsetPtrBuffer.destroy();
     this.baseEdgeOffsetPtrBuffer.destroy();
+    this.baseVertexOffsetPtrBuffer.destroy();
     this.baseFaceValenceBuffer.destroy();
     this.baseVerticesBuffer.destroy();
     this.baseVertexOffsetBuffer.destroy();

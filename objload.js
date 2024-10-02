@@ -45,8 +45,9 @@ class SubdivMesh {
     this.faceOffset = [];
     this.faceOffsetPtr = [-1]; // indexed by level, points into faceOffset
     this.edgeOffsetPtr = [-1]; // indexed by level, points into edges
+    this.vertexOffsetPtr = [-1]; // indexed by level, points into vertexOffset
     this.edges = [];
-    this.baseVertices = [];
+    this.baseVertices = []; // array of arrays, flattened before sending to GPU
     this.vertexOffset = [];
     this.vertexValence = [];
     this.vertexIndex = [];
@@ -348,7 +349,8 @@ class SubdivMesh {
       });
 
       // now we populate baseVertices
-      var vertexOffset = 0;
+      var vertexOffset = this.baseVertices.flat().length;
+      this.vertexOffsetPtr.push(vertexOffset);
       vertexNeighborsMap[level].forEach((neighbors, vertex) => {
         this.vertexIndex.push(vertex);
         this.baseVertices.push(neighbors);
@@ -378,6 +380,7 @@ class SubdivMesh {
     this.faceOffset = new Uint32Array(this.faceOffset);
     this.faceOffsetPtr = new Uint32Array(this.faceOffsetPtr);
     this.edgeOffsetPtr = new Uint32Array(this.edgeOffsetPtr);
+    this.vertexOffsetPtr = new Uint32Array(this.vertexOffsetPtr);
     this.vertexValence = new Uint32Array(this.vertexValence);
     this.vertexOffset = new Uint32Array(this.vertexOffset);
     this.vertexIndex = new Uint32Array(this.vertexIndex);
