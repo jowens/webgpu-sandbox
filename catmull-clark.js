@@ -172,6 +172,7 @@ const facePointsModule = device.createShaderModule({
     @group(0) @binding(2) var<storage, read> baseFaces: array<u32>;
     @group(0) @binding(3) var<storage, read> baseFaceOffset: array<u32>;
     @group(0) @binding(4) var<storage, read> baseFaceValence: array<u32>;
+    @group(0) @binding(5) var<storage, read> baseFaceOffsetPtr: array<u32>;
     /** Niessner 2012:
       * "The face kernel requires two buffers: one index buffer, whose
       * entries are the vertex buffer indices for each vertex of the face; a
@@ -186,13 +187,14 @@ const facePointsModule = device.createShaderModule({
       @builtin(global_invocation_id) id: vec3u) {
       let i = id.x; /* [0, number of faces) */
       if (i < myUniforms.levelCount[myUniforms.level].f) {
+        let in = i + baseFaceOffsetPtr[myUniforms.level];
         let out = i + myUniforms.levelBasePtr[myUniforms.level].f;
         vertices[out] = vec3f(0,0,0);
-        for (var j: u32 = baseFaceOffset[i]; j < baseFaceOffset[i] + baseFaceValence[i]; j++) {
+        for (var j: u32 = baseFaceOffset[in]; j < baseFaceOffset[in] + baseFaceValence[in]; j++) {
           let faceVertex = baseFaces[j];
           vertices[out] += vertices[faceVertex];
         }
-        vertices[out] /= f32(baseFaceValence[i]);
+        vertices[out] /= f32(baseFaceValence[in]);
       }
       // TODO: decide on vec3f or vec4f and set w if so
     }
@@ -605,6 +607,12 @@ class GPUContext {
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
+    this.baseFaceOffsetPtrBuffer = device.createBuffer({
+      label: "base face offset",
+      size: mesh.faceOffsetPtr.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+
     this.baseVerticesBuffer = device.createBuffer({
       label: "base vertices buffer",
       size: mesh.baseVertices.byteLength,
@@ -719,6 +727,7 @@ class GPUContext {
         { binding: 2, resource: { buffer: this.baseFacesBuffer } },
         { binding: 3, resource: { buffer: this.baseFaceOffsetBuffer } },
         { binding: 4, resource: { buffer: this.baseFaceValenceBuffer } },
+        { binding: 5, resource: { buffer: this.baseFaceOffsetPtrBuffer } },
       ],
     });
 
@@ -778,6 +787,11 @@ class GPUContext {
     device.queue.writeBuffer(this.baseFacesBuffer, 0, mesh.faces);
     device.queue.writeBuffer(this.baseEdgesBuffer, 0, mesh.edges);
     device.queue.writeBuffer(this.baseFaceOffsetBuffer, 0, mesh.faceOffset);
+    device.queue.writeBuffer(
+      this.baseFaceOffsetPtrBuffer,
+      0,
+      mesh.faceOffsetPtr
+    );
     device.queue.writeBuffer(this.baseFaceValenceBuffer, 0, mesh.faceValence);
     device.queue.writeBuffer(this.baseVerticesBuffer, 0, mesh.baseVertices);
     device.queue.writeBuffer(this.baseVertexOffsetBuffer, 0, mesh.vertexOffset);
@@ -797,6 +811,7 @@ class GPUContext {
     this.baseFacesBuffer.destroy();
     this.baseEdgesBuffer.destroy();
     this.baseFaceOffsetBuffer.destroy();
+    this.baseFaceOffsetPtrBuffer.destroy();
     this.baseFaceValenceBuffer.destroy();
     this.baseVerticesBuffer.destroy();
     this.baseVertexOffsetBuffer.destroy();

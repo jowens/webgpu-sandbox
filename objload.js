@@ -43,6 +43,7 @@ class SubdivMesh {
     this.triangles = [];
     this.faceValence = [];
     this.faceOffset = [];
+    this.faceOffsetPtr = [-1]; // indexed by level, points to faceOffset
     this.edges = [];
     this.baseVertices = [];
     this.vertexOffset = [];
@@ -64,11 +65,9 @@ class SubdivMesh {
     // the only points in the vertex buffer @ level 0 are vertices, so all offsets are 0
     this.levelBasePtr = [new Level(0, 0, 0, 0)];
 
-    var level = 1;
-
     this.scaleInput = true;
     this.largestInput = 0.0;
-    this.maxLevel = 1; // valid levels are <= maxLevel
+    this.maxLevel = 2; // valid levels are <= maxLevel
 
     // OBJ stores faces in CCW order
     // The OBJ (or .OBJ) file format stores vertices in a counterclockwise order by default. This means that if the vertices are ordered counterclockwise around a face, both the face and the normal will point toward the viewer. If the vertices are ordered clockwise, both will point away from the viewer.
@@ -133,7 +132,7 @@ class SubdivMesh {
       }
       this.levelCount[0].t += valence - 2;
     }
-    for (level = 1; level <= this.maxLevel; level++) {
+    for (var level = 1; level <= this.maxLevel; level++) {
       /** Responsibilities in each loop:
        * - Push and populate a new level{Count,BasePtr}[level]
        * - Lengthen vertices array
@@ -175,11 +174,13 @@ class SubdivMesh {
        * - make a list of edges
        * input is faces from previous level (facesInternal)
        * outputs are:
-       * -
+       * - faceOffset, faceValence
+       * - edgeToFace, edgeToEdgeID (both Maps)
        */
       console.log(facesInternal);
       facesInternal[level] = [];
       const seenVertices = new Set();
+      this.faceOffsetPtr.push(this.faceOffset.length);
       for (
         let i = 0, faceOffset = 0, facePointID = this.levelBasePtr[level].f;
         i < this.levelCount[level].f;
@@ -188,6 +189,7 @@ class SubdivMesh {
         // i indexes the face from the previous level
         // faceOffset indexes individual vertices within the face
         // fPointsPtr indexes into the output vertex array
+        // faceOffsetPtr[level] points to the first element in level's faceOffset
         this.faceOffset.push(faceOffset); // TODO should be this.faceOffset[facePointID] = faceOffset
         this.faceValence.push(facesInternal[level - 1][i].length);
         faceOffset += facesInternal[level - 1][i].length;
@@ -371,6 +373,7 @@ class SubdivMesh {
     );
     this.faceValence = new Uint32Array(this.faceValence);
     this.faceOffset = new Uint32Array(this.faceOffset);
+    this.faceOffsetPtr = new Uint32Array(this.faceOffsetPtr);
     this.vertexValence = new Uint32Array(this.vertexValence);
     this.vertexOffset = new Uint32Array(this.vertexOffset);
     this.vertexIndex = new Uint32Array(this.vertexIndex);
