@@ -992,22 +992,11 @@ async function frame() {
   renderPass.setIndexBuffer(ctx.triangleIndicesBuffer, "uint32");
   // next line switches every TOGGLE_DURATION frames
   // switch ((now / uni.views.TOGGLE_DURATION) & 1) {
-  // instead switch explicitly on subdivLevel
-  // clearly this math can be much much simpler
-  switch (uni.views.subdivLevel[0]) {
-    case 0 /* draws tris [0, baseTrianglesCount) */:
-      startIdx = 0;
-      endIdx = mesh.levelCount[0].t * 3;
-      break;
-    case 1 /* draws tris [baseTrianglesCount, base + subdiv counts) */:
-      startIdx = mesh.levelCount[0].t * 3;
-      endIdx = (mesh.levelCount[0].t + mesh.levelCount[1].t) * 3;
-      break;
-  }
+  // instead just compute based on subdivLevel
   renderPass.drawIndexed(
-    endIdx - startIdx /* count */,
+    mesh.levelCount[uni.views.subdivLevel[0]].t * 3 /* count */,
     1 /* instance */,
-    startIdx /* start */
+    mesh.levelBasePtr[uni.views.subdivLevel[0]].t * 3 /* start */
   );
 
   // End the render pass and submit the command buffer
