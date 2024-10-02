@@ -46,6 +46,7 @@ const uniformsCode = /* wgsl */ `
     WIGGLE_MAGNITUDE: f32,
     WIGGLE_SPEED: f32,
     subdivLevel: u32,
+    level: u32, // used during compute kernels
     @align(16) levelCount: array<Level, MAX_LEVEL>,
     @align(16) levelBasePtr: array<Level, MAX_LEVEL>,
     time: f32,
@@ -66,6 +67,7 @@ uni.set({
   WIGGLE_MAGNITUDE: 0, // 0.002, //0.025, // how much vertices are perturbed
   WIGGLE_SPEED: 0.05, // how quickly perturbations occur
   subdivLevel: 0,
+  level: 0,
   time: 0.0,
   timestep: 1.0,
 });
@@ -182,9 +184,9 @@ const facePointsModule = device.createShaderModule({
       */
     @compute @workgroup_size(${WORKGROUP_SIZE}) fn facePointsKernel(
       @builtin(global_invocation_id) id: vec3u) {
-      let i = id.x;
-      if (i < myUniforms.levelCount[1].f) {
-        let out = i +  myUniforms.levelBasePtr[1].f;
+      let i = id.x; /* [0, number of faces) */
+      if (i < myUniforms.levelCount[myUniforms.level].f) {
+        let out = i + myUniforms.levelBasePtr[myUniforms.level].f;
         vertices[out] = vec3f(0,0,0);
         for (var j: u32 = baseFaceOffset[i]; j < baseFaceOffset[i] + baseFaceValence[i]; j++) {
           let faceVertex = baseFaces[j];
@@ -232,8 +234,8 @@ const edgePointsModule = device.createShaderModule({
     @compute @workgroup_size(${WORKGROUP_SIZE}) fn edgePointsKernel(
       @builtin(global_invocation_id) id: vec3u) {
         let i = id.x;
-        if (i < myUniforms.levelCount[1].e) {
-          let out = i + myUniforms.levelBasePtr[1].e;
+        if (i < myUniforms.levelCount[myUniforms.level].e) {
+          let out = i + myUniforms.levelBasePtr[myUniforms.level].e;
           let edgeID = i;
           vertices[out] = vec3f(0,0,0);
           for (var j: u32 = 0; j < 4; j++) {
@@ -303,8 +305,8 @@ const vertexPointsModule = device.createShaderModule({
     @compute @workgroup_size(${WORKGROUP_SIZE}) fn vertexPointsKernel(
       @builtin(global_invocation_id) id: vec3u) {
         let i = id.x;
-        if (i < myUniforms.levelCount[1].v) {
-          let out = i + myUniforms.levelBasePtr[1].v;
+        if (i < myUniforms.levelCount[myUniforms.level].v) {
+          let out = i + myUniforms.levelBasePtr[myUniforms.level].v;
           let valence = baseVertexValence[i];
           vertices[out] = vec3f(0,0,0);
           for (var j: u32 = baseVertexOffset[i]; j < baseVertexOffset[i] + 2 * baseVertexValence[i]; j++) {
@@ -904,24 +906,28 @@ async function frame() {
   computePass.dispatchWorkgroups(
     Math.ceil(mesh.levelCount[0].v / WORKGROUP_SIZE)
   );
+  for (var level = 1; level <= uni.views.subdivLevel[0]; level++) {
+    uni.views.level[0] = level;
+    device.queue.writeBuffer(uniformsBuffer, 0, uni.arrayBuffer); // updates level
 
-  computePass.setPipeline(facePipeline);
-  computePass.setBindGroup(0, ctx.faceBindGroup);
-  computePass.dispatchWorkgroups(
-    Math.ceil(mesh.levelCount[1].f / WORKGROUP_SIZE)
-  );
+    computePass.setPipeline(facePipeline);
+    computePass.setBindGroup(0, ctx.faceBindGroup);
+    computePass.dispatchWorkgroups(
+      Math.ceil(mesh.levelCount[level].f / WORKGROUP_SIZE)
+    );
 
-  computePass.setPipeline(edgePipeline);
-  computePass.setBindGroup(0, ctx.edgeBindGroup);
-  computePass.dispatchWorkgroups(
-    Math.ceil(mesh.levelCount[1].e / WORKGROUP_SIZE)
-  );
+    computePass.setPipeline(edgePipeline);
+    computePass.setBindGroup(0, ctx.edgeBindGroup);
+    computePass.dispatchWorkgroups(
+      Math.ceil(mesh.levelCount[level].e / WORKGROUP_SIZE)
+    );
 
-  computePass.setPipeline(vertexPipeline);
-  computePass.setBindGroup(0, ctx.vertexBindGroup);
-  computePass.dispatchWorkgroups(
-    Math.ceil(mesh.levelCount[1].v / WORKGROUP_SIZE)
-  );
+    computePass.setPipeline(vertexPipeline);
+    computePass.setBindGroup(0, ctx.vertexBindGroup);
+    computePass.dispatchWorkgroups(
+      Math.ceil(mesh.levelCount[level].v / WORKGROUP_SIZE)
+    );
+  }
 
   computePass.setPipeline(facetNormalsPipeline);
   computePass.setBindGroup(0, ctx.facetNormalsBindGroup);
