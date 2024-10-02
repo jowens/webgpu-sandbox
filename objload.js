@@ -43,6 +43,7 @@ class SubdivMesh {
     this.triangles = [];
     this.faceValence = [];
     this.faceOffset = [];
+    // next three: we will never access xOffsetPtr[0]
     this.faceOffsetPtr = [-1]; // indexed by level, points into faceOffset
     this.edgeOffsetPtr = [-1]; // indexed by level, points into edges
     this.vertexOffsetPtr = [-1]; // indexed by level, points into vertexOffset
@@ -111,10 +112,18 @@ class SubdivMesh {
 
     /* Now do initial processing of faces */
     // convert 1-indexed to 0-indexed, copy into facesInternal
+    this.faceOffsetPtr.push(this.faceOffset.length); // should be zero
     for (let i = 0; i < facesIn.length; i++) {
       facesInternal[0].push(
         facesIn[i].vertices.map((vtx) => vtx.vertexIndex - 1)
       );
+      // every time we push to faces, also push to face{Offset, Valence}
+      this.faceOffset.push(
+        this.faceOffset.length == 0
+          ? 0
+          : this.faceOffset.at(-1) + this.faceValence.at(-1)
+      );
+      this.faceValence.push(facesInternal[0][i].length);
       // if we had normals or texture coords, deal with them here
       this.faces.push(...facesInternal[0][i]);
       /**
@@ -171,33 +180,18 @@ class SubdivMesh {
        * - Walk through faces, count edges
        */
 
-      /** face loop: goals are
-       * - populate face{Valence, Offset}
-       * - make a list of edges
+      /** face loop: goal is to make a list of edges
        * input is faces from previous level (facesInternal)
-       * outputs are:
-       * - faceOffset, faceValence
-       * - edgeToFace, edgeToEdgeID (both Maps)
+       * outputs are edgeToFace, edgeToEdgeID (both are Maps)
        */
-      console.log(facesInternal);
       facesInternal[level] = [];
       const seenVertices = new Set();
-      this.faceOffsetPtr.push(this.faceOffset.length);
       for (
-        let i = 0, faceOffset = 0, facePointID = this.levelBasePtr[level].f;
+        let i = 0, facePointID = this.levelBasePtr[level].f;
         i < this.levelCount[level].f;
         i++, facePointID++
       ) {
-        // i indexes the face from the previous level
-        // faceOffset indexes individual vertices within the face
-        // fPointsPtr indexes into the output vertex array
-        // faceOffsetPtr[level] points to the first element in level's faceOffset
-        this.faceOffset.push(faceOffset); // TODO should be this.faceOffset[facePointID] = faceOffset
-        this.faceValence.push(facesInternal[level - 1][i].length);
-        faceOffset += facesInternal[level - 1][i].length;
-        const thisFacePtr = this.faces.length;
-
-        // now loop through vertices in this face, recording edges
+        // loop through vertices in this face, recording edges
         const faceLen = facesInternal[level - 1][i].length;
         for (let j = 0; j < faceLen; j++) {
           let start = j;
@@ -215,7 +209,6 @@ class SubdivMesh {
             console.log(`ERROR: edge ${edge} already in edgeToFace`);
           }
           edgeToFace.set(edge, facePointID);
-          // console.log(            "Looking at edge ",            edge,            ", now has facePointID",            facePointID          );
           /**  in a manifold mesh, each edge will be set twice, so it's
            *   OK if it's already set; but if it sets here, it better be set twice */
           if (edgeToEdgeID.has(edge) ^ edgeToEdgeID.has(edgeRev)) {
@@ -232,7 +225,6 @@ class SubdivMesh {
       Array.from(seenVertices)
         .sort((a, b) => a - b) // numerical sort
         .forEach((v) => vertexNeighborsMap[level].set(v, []));
-      // console.log(seenVertices, vertexNeighborsMap);
 
       this.levelCount[level].e = edgeToEdgeID.size / 2;
       this.levelCount[level].v = seenVertices.size;
@@ -241,12 +233,12 @@ class SubdivMesh {
 
       // all faces have been ingested, let's subdivide!
       // loop through all faces in previous level
+      this.faceOffsetPtr.push(this.faceOffset.length);
       for (
         let i = 0, fPointsPtr = this.levelBasePtr[level].f;
         i < facesInternal[level - 1].length;
         i++, fPointsPtr++
       ) {
-        // console.log("Considering face ", facesInternal[level - 1][i]);
         // to make nomenclature easier, let's have tiny functions v and e
         // they have to be arrow functions to inherit "this" from the surrounding scope
         // v says "given vertex idx, what will be its v point?"
@@ -286,7 +278,10 @@ class SubdivMesh {
             e(j, mod(j + 1, valence)),
           ]);
           this.faces.push(...facesInternal[level].at(-1)); // same as above
-          // console.log("Output face: ", facesInternal[level].at(-1));
+          this.faceOffset.push(
+            this.faceOffset.at(-1) + this.faceValence.at(-1)
+          );
+          this.faceValence.push(facesInternal[level].at(-1).length);
           this.triangles.push(
             /** there exists likely a smarter way of subdividing the quad:
              * what if (e.g.) it's non-convex? we should measure
@@ -308,7 +303,7 @@ class SubdivMesh {
       // we iterate over edgeToEdgeID because its entry order
       //   is the canonical order
       // edgeOffsetPtr[level]: starting point for edges for this level
-      this.edgeOffsetPtr.push(this.edges.size / 4);
+      this.edgeOffsetPtr.push(this.edges.length);
       edgeToEdgeID.forEach((edgeID, edge) => {
         const v = edge.split(",").map((n) => parseInt(n, 10));
         const reverseEdge = edgeToKey(v[1], v[0]);
@@ -340,17 +335,15 @@ class SubdivMesh {
         // iterating through edgeToEdgeID ensures a consistent order
         if (f[1] > f[0]) {
           // in Niessner, all edges have f[1] > f[0]
-          // console.log(            `[${level}]`,            "Pushing into edge array:",            v[0],            f[0],            v[1],            f[1]          );
           this.edges.push(v[0], f[0], v[1], f[1]);
-          // console.log(vertexNeighborsMap[level]);
           vertexNeighborsMap[level].get(v[0]).push(v[1], f[1]);
           vertexNeighborsMap[level].get(v[1]).push(v[0], f[0]);
         }
       });
 
       // now we populate baseVertices
-      var vertexOffset = this.baseVertices.flat().length;
-      this.vertexOffsetPtr.push(vertexOffset);
+      this.vertexOffsetPtr.push(this.baseVertices.length); // # of vertices
+      var vertexOffset = this.baseVertices.flat().length; // # of neighbors
       vertexNeighborsMap[level].forEach((neighbors, vertex) => {
         this.vertexIndex.push(vertex);
         this.baseVertices.push(neighbors);
