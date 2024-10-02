@@ -978,14 +978,13 @@ async function frame() {
   computePass.setPipeline(facetNormalsPipeline);
   computePass.setBindGroup(0, ctx.facetNormalsBindGroup);
   computePass.dispatchWorkgroups(
-    Math.ceil((mesh.levelCount[0].t + mesh.levelCount[1].t) / WORKGROUP_SIZE)
+    Math.ceil(mesh.facetNormals.length / WORKGROUP_SIZE)
   );
 
   computePass.setPipeline(vertexNormalsPipeline);
   computePass.setBindGroup(0, ctx.vertexNormalsBindGroup);
   computePass.dispatchWorkgroups(
-    // XXX FIX this is probably broken, wrong size
-    Math.ceil(mesh.vertices.length / WORKGROUP_SIZE)
+    Math.ceil(mesh.vertexNormals.length / WORKGROUP_SIZE)
   );
   computePass.end();
 
