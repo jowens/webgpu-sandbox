@@ -303,7 +303,7 @@ class SubdivMesh {
       // we iterate over edgeToEdgeID because its entry order
       //   is the canonical order
       // edgeOffsetPtr[level]: starting point for edges for this level
-      this.edgeOffsetPtr.push(this.edges.length);
+      this.edgeOffsetPtr.push(this.edges.length / 4);
       edgeToEdgeID.forEach((edgeID, edge) => {
         const v = edge.split(",").map((n) => parseInt(n, 10));
         const reverseEdge = edgeToKey(v[1], v[0]);
