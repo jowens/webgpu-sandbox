@@ -30,11 +30,8 @@ const debug = urlParams.get("debug"); // string or undefined
 // { abc: '123', def: '456', xyz: 'banana' }   // notice they are strings, not numbers.
 
 // using webgpu-utils to have one struct for uniforms across all kernels
-// Seems kind of weird that struct is a WGSL/GPU struct, not a JS/CPU struct,
-//   but that seems to be the only option
-// the reason I want a struct is so objects can be named and not "uniforms[5]"
-// Q: Is this the right way to do things or is it better to have different
-//   uniform structures for each kernel?
+// design goal here: have one single place to record params, even at the cost
+//   of manual copying
 const uniformsCode = /* wgsl */ `
   const MAX_LEVEL = 10;
   struct Level {
@@ -131,7 +128,8 @@ const perturbInputVerticesModule = device.createShaderModule({
     @compute @workgroup_size(${WORKGROUP_SIZE}) fn perturbInputVerticesKernel(
              @builtin(global_invocation_id) id: vec3u) {
       let i = id.x;
-      if (i < arrayLength(&vertices)) {
+      if (i < arrayLength(&vertices)) { // only call on base vertices, but that is
+                                        // enforced by the binding
         let t = myUniforms.time * myUniforms.WIGGLE_SPEED;
         let stepsize = myUniforms.WIGGLE_MAGNITUDE;
         let angle_start = f32(i);
@@ -152,14 +150,14 @@ const perturbInputVerticesModule = device.createShaderModule({
 });
 
 /** (1) Calculation of face points
- * Number of faces: baseFaceValence.length == baseFacesCount
+ * Number of faces: faceValence.length == facesCount
  * for each face: new face point = centroid(vertices of current face)
  * Pseudocode:   (note math operations are on vec3f's)
- * parallel for i in [0 .. baseFaceValence.length]:
+ * parallel for i in [0 .. faceValence.length]:
  *   newFaces[i] = [0,0,0]
- *   for j in [baseFaceOffset[i] .. baseFaceOffset[i] + baseFaceValence[i]]:
- *     newFaces[i] += vertices[baseFaces[j]
- *   newFaces[i] /= baseFaceValence[i]
+ *   for j in [faceOffset[i] .. faceOffset[i] + faceValence[i]]:
+ *     newFaces[i] += vertices[faces[j]
+ *   newFaces[i] /= faceValence[i]
  */
 
 const facePointsModule = device.createShaderModule({
@@ -169,33 +167,33 @@ const facePointsModule = device.createShaderModule({
     /* input + output */
     @group(0) @binding(1) var<storage, read_write> vertices: array<vec3f>;
             /* input */
-    @group(0) @binding(2) var<storage, read> baseFaces: array<u32>;
-    @group(0) @binding(3) var<storage, read> baseFaceOffset: array<u32>;
-    @group(0) @binding(4) var<storage, read> baseFaceValence: array<u32>;
-    @group(0) @binding(5) var<storage, read> baseFaceOffsetPtr: array<u32>;
+    @group(0) @binding(2) var<storage, read> faces: array<u32>;
+    @group(0) @binding(3) var<storage, read> faceOffset: array<u32>;
+    @group(0) @binding(4) var<storage, read> faceValence: array<u32>;
+    @group(0) @binding(5) var<storage, read> faceOffsetPtr: array<u32>;
     /** Niessner 2012:
       * "The face kernel requires two buffers: one index buffer, whose
       * entries are the vertex buffer indices for each vertex of the face; a
       * second buffer stores the valence of the face along with an offset
       * into the index buffer for the first vertex of each face."
       *
-      * implementation above: "index buffer" is baseFaces
-      *                       "valence of the face" is baseFaceValence
-      *                       "offset into the index buffer" is baseFaceOffset
+      * implementation above: "index buffer" is faces
+      *                       "valence of the face" is faceValence
+      *                       "offset into the index buffer" is faceOffset
       */
     @compute @workgroup_size(${WORKGROUP_SIZE}) fn facePointsKernel(
       @builtin(global_invocation_id) id: vec3u) {
       let i = id.x; /* [0, number of faces) */
       if (i < myUniforms.levelCount[myUniforms.level].f) {
         // faceOffsetPtr[level] points to the first element in level's faceOffset
-        let in = i + baseFaceOffsetPtr[myUniforms.level];
+        let in = i + faceOffsetPtr[myUniforms.level];
         let out = i + myUniforms.levelBasePtr[myUniforms.level].f;
         vertices[out] = vec3f(0,0,0);
-        for (var j: u32 = baseFaceOffset[in]; j < baseFaceOffset[in] + baseFaceValence[in]; j++) {
-          let faceVertex = baseFaces[j];
+        for (var j: u32 = faceOffset[in]; j < faceOffset[in] + faceValence[in]; j++) {
+          let faceVertex = faces[j];
           vertices[out] += vertices[faceVertex];
         }
-        vertices[out] /= f32(baseFaceValence[in]);
+        vertices[out] /= f32(faceValence[in]);
       }
       // TODO: decide on vec3f or vec4f and set w if so
     }
@@ -211,7 +209,7 @@ const facePointsModule = device.createShaderModule({
  */
 
 /** (2) Calculation of edge points
- * Number of edges: baseEdges.length
+ * Number of edges: edges.length
  * for each edge: new edge point = average(2 neighboring face points, 2 endpoints of edge)
  * Pseudocode:   (note math operations are on vec3f's)
  * parallel for i in [0 .. ?.length]:
@@ -226,25 +224,25 @@ const edgePointsModule = device.createShaderModule({
     /* input + output */
     @group(0) @binding(1) var<storage, read_write> vertices: array<vec3f>;
     /* input */
-    @group(0) @binding(2) var<storage, read> baseEdges: array<vec4u>;
-    @group(0) @binding(3) var<storage, read> baseEdgeOffsetPtr: array<u32>;
+    @group(0) @binding(2) var<storage, read> edges: array<vec4u>;
+    @group(0) @binding(3) var<storage, read> edgeOffsetPtr: array<u32>;
 
     /** "Since a single (non-boundary) edge always has two incident faces and vertices,
      * the edge kernel needs a buffer for the indices of these entities."
      *
-     * implementation above: "a buffer for the indices of these entities" is baseEdges
+     * implementation above: "a buffer for the indices of these entities" is edges
      */
 
     @compute @workgroup_size(${WORKGROUP_SIZE}) fn edgePointsKernel(
       @builtin(global_invocation_id) id: vec3u) {
         let i = id.x;
         if (i < myUniforms.levelCount[myUniforms.level].e) {
-          /* edgeID is the index into the baseEdges data structure */
-          let edgeID = i + baseEdgeOffsetPtr[myUniforms.level];
+          /* edgeID is the index into the edges data structure */
+          let edgeID = i + edgeOffsetPtr[myUniforms.level];
           let out = i + myUniforms.levelBasePtr[myUniforms.level].e;
           vertices[out] = vec3f(0,0,0);
           for (var j: u32 = 0; j < 4; j++) {
-            vertices[out] += vertices[baseEdges[edgeID][j]];
+            vertices[out] += vertices[edges[edgeID][j]];
           }
           vertices[out] *= 0.25;
         }
@@ -272,21 +270,21 @@ const edgePointsModule = device.createShaderModule({
  * - Ve is the average of the other endpoint of all incident edges
  *   - The actual math is "midpoint of all incident edges", but one end of all
  *     those edges is just V (below), so we lump that contribution into the V term
- *   - F and Ve are just listed in the baseVertices table
+ *   - F and Ve are just listed in the vertexNeighbors table
  * - V is this vertex
  *   - Output is (F + Ve + (n-2) V) / n
  * - If F and Ve points are f_0, f1, Ve_0, ...:
  *   - Output is [(f_0 + f1 + ... + Ve_0 + Ve1 + ...) / n _ (n-2) V] / n
- * Number of vertex points: baseVertexValence.length
+ * Number of vertex points: vertexValence.length
  * Pseudocode:   (note math operations are on vec3f's)
- * parallel for i in [0 .. baseVertexValence.length]:
+ * parallel for i in [0 .. vertexValence.length]:
  *   newVertex[i] = [0,0,0]
- *   valence = baseVertexValence[i]
- *   for j in [baseVertexOffset[i] .. baseVertexOffset[i] + baseVertexValence[i]]:
- *     newVertex[i] += vertices[baseVertices[j]]
- *   newVertex[i] /= baseVertexValence[i]
- *   newVertex[i] += (n-2) * baseVertexIndex[i]
- *   newVertex[i] /= baseVertexValence[i]
+ *   valence = vertexValence[i]
+ *   for j in [vertexOffset[i] .. vertexOffset[i] + vertexValence[i]]:
+ *     newVertex[i] += vertices[vertexNeighbors[j]]
+ *   newVertex[i] /= vertexValence[i]
+ *   newVertex[i] += (n-2) * vertexIndex[i]
+ *   newVertex[i] /= vertexValence[i]
  */
 
 const vertexPointsModule = device.createShaderModule({
@@ -296,32 +294,32 @@ const vertexPointsModule = device.createShaderModule({
     /* input + output */
     @group(0) @binding(1) var<storage, read_write> vertices: array<vec3f>;
     /* input */
-    @group(0) @binding(2) var<storage, read> baseVertices: array<u32>;
-    @group(0) @binding(3) var<storage, read> baseVertexOffset: array<u32>;
-    @group(0) @binding(4) var<storage, read> baseVertexValence: array<u32>;
-    @group(0) @binding(5) var<storage, read> baseVertexIndex: array<u32>;
-    @group(0) @binding(6) var<storage, read> baseVertexOffsetPtr: array<u32>;
+    @group(0) @binding(2) var<storage, read> vertexNeighbors: array<u32>;
+    @group(0) @binding(3) var<storage, read> vertexOffset: array<u32>;
+    @group(0) @binding(4) var<storage, read> vertexValence: array<u32>;
+    @group(0) @binding(5) var<storage, read> vertexIndex: array<u32>;
+    @group(0) @binding(6) var<storage, read> vertexOffsetPtr: array<u32>;
 
     /** "We use an index buffer containing the indices of the incident edge and
      * vertex points."
      *
-     * implementation above: "a buffer for the indices of these entities" is baseVertices
+     * implementation above: "a buffer for the indices of these entities" is vertexNeighbors
      */
 
     @compute @workgroup_size(${WORKGROUP_SIZE}) fn vertexPointsKernel(
       @builtin(global_invocation_id) id: vec3u) {
         let i = id.x;
         if (i < myUniforms.levelCount[myUniforms.level].v) {
-          let in = i + baseVertexOffsetPtr[myUniforms.level];
+          let in = i + vertexOffsetPtr[myUniforms.level];
           let out = i + myUniforms.levelBasePtr[myUniforms.level].v;
-          let valence = baseVertexValence[in];
+          let valence = vertexValence[in];
           vertices[out] = vec3f(0,0,0);
-          for (var j: u32 = baseVertexOffset[in]; j < baseVertexOffset[in] + 2 * baseVertexValence[in]; j++) {
-            let baseVertex = baseVertices[j];
-            vertices[out] += vertices[baseVertex];
+          for (var j: u32 = vertexOffset[in]; j < vertexOffset[in] + 2 * vertexValence[in]; j++) {
+            let vertex = vertexNeighbors[j];
+            vertices[out] += vertices[vertex];
           }
           vertices[out] /= f32(valence);
-          vertices[out] += f32(valence - 2) * vertices[baseVertexIndex[in]];
+          vertices[out] += f32(valence - 2) * vertices[vertexIndex[in]];
           vertices[out] /= f32(valence);
           // TODO: decide on vec3f or vec4f and set w if so
       }
@@ -588,68 +586,68 @@ let mesh = await loadMesh(modelToURL[modelParams.model]);
 class GPUContext {
   createGPUBuffers() {
     // read-only inputs:
-    this.baseFacesBuffer = device.createBuffer({
+    this.facesBuffer = device.createBuffer({
       label: "base faces buffer",
       size: mesh.faces.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
-    this.baseEdgesBuffer = device.createBuffer({
+    this.edgesBuffer = device.createBuffer({
       label: "base edges buffer",
       size: mesh.edges.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
-    this.baseFaceOffsetBuffer = device.createBuffer({
+    this.faceOffsetBuffer = device.createBuffer({
       label: "base face offset",
       size: mesh.faceOffset.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
-    this.baseFaceValenceBuffer = device.createBuffer({
-      label: "base face valence",
+    this.faceValenceBuffer = device.createBuffer({
+      label: "face valence",
       size: mesh.faceValence.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
-    this.baseFaceOffsetPtrBuffer = device.createBuffer({
-      label: "base face offset",
+    this.faceOffsetPtrBuffer = device.createBuffer({
+      label: "face offset",
       size: mesh.faceOffsetPtr.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
-    this.baseEdgeOffsetPtrBuffer = device.createBuffer({
-      label: "base edge offset",
+    this.edgeOffsetPtrBuffer = device.createBuffer({
+      label: "edge offset",
       size: mesh.edgeOffsetPtr.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
-    this.baseVertexOffsetPtrBuffer = device.createBuffer({
-      label: "base vertex offset",
+    this.vertexOffsetPtrBuffer = device.createBuffer({
+      label: "vertex offset",
       size: mesh.vertexOffsetPtr.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
-    this.baseVerticesBuffer = device.createBuffer({
-      label: "base vertices buffer",
-      size: mesh.baseVertices.byteLength,
+    this.vertexNeighborsBuffer = device.createBuffer({
+      label: "vertex neighbors buffer",
+      size: mesh.vertexNeighbors.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
-    this.baseVertexOffsetBuffer = device.createBuffer({
-      label: "base vertex offset buffer",
+    this.vertexOffsetBuffer = device.createBuffer({
+      label: "vertex offset buffer",
       size: mesh.vertexOffset.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
-    this.baseVertexValenceBuffer = device.createBuffer({
-      label: "base vertex valence buffer",
+    this.vertexValenceBuffer = device.createBuffer({
+      label: "vertex valence buffer",
       size: mesh.vertexValence.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
-    this.baseVertexIndexBuffer = device.createBuffer({
-      label: "base vertex index buffer",
+    this.vertexIndexBuffer = device.createBuffer({
+      label: "vertex index buffer",
       size: mesh.vertexIndex.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
@@ -741,10 +739,10 @@ class GPUContext {
       entries: [
         { binding: 0, resource: { buffer: uniformsBuffer } },
         { binding: 1, resource: { buffer: this.verticesBuffer } },
-        { binding: 2, resource: { buffer: this.baseFacesBuffer } },
-        { binding: 3, resource: { buffer: this.baseFaceOffsetBuffer } },
-        { binding: 4, resource: { buffer: this.baseFaceValenceBuffer } },
-        { binding: 5, resource: { buffer: this.baseFaceOffsetPtrBuffer } },
+        { binding: 2, resource: { buffer: this.facesBuffer } },
+        { binding: 3, resource: { buffer: this.faceOffsetBuffer } },
+        { binding: 4, resource: { buffer: this.faceValenceBuffer } },
+        { binding: 5, resource: { buffer: this.faceOffsetPtrBuffer } },
       ],
     });
 
@@ -754,8 +752,8 @@ class GPUContext {
       entries: [
         { binding: 0, resource: { buffer: uniformsBuffer } },
         { binding: 1, resource: { buffer: this.verticesBuffer } },
-        { binding: 2, resource: { buffer: this.baseEdgesBuffer } },
-        { binding: 3, resource: { buffer: this.baseEdgeOffsetPtrBuffer } },
+        { binding: 2, resource: { buffer: this.edgesBuffer } },
+        { binding: 3, resource: { buffer: this.edgeOffsetPtrBuffer } },
       ],
     });
 
@@ -765,11 +763,11 @@ class GPUContext {
       entries: [
         { binding: 0, resource: { buffer: uniformsBuffer } },
         { binding: 1, resource: { buffer: this.verticesBuffer } },
-        { binding: 2, resource: { buffer: this.baseVerticesBuffer } },
-        { binding: 3, resource: { buffer: this.baseVertexOffsetBuffer } },
-        { binding: 4, resource: { buffer: this.baseVertexValenceBuffer } },
-        { binding: 5, resource: { buffer: this.baseVertexIndexBuffer } },
-        { binding: 6, resource: { buffer: this.baseVertexOffsetPtrBuffer } },
+        { binding: 2, resource: { buffer: this.vertexNeighborsBuffer } },
+        { binding: 3, resource: { buffer: this.vertexOffsetBuffer } },
+        { binding: 4, resource: { buffer: this.vertexValenceBuffer } },
+        { binding: 5, resource: { buffer: this.vertexIndexBuffer } },
+        { binding: 6, resource: { buffer: this.vertexOffsetPtrBuffer } },
       ],
     });
 
@@ -803,33 +801,25 @@ class GPUContext {
   }
 
   writeToGPUBuffers() {
-    device.queue.writeBuffer(this.baseFacesBuffer, 0, mesh.faces);
-    device.queue.writeBuffer(this.baseEdgesBuffer, 0, mesh.edges);
-    device.queue.writeBuffer(this.baseFaceOffsetBuffer, 0, mesh.faceOffset);
+    device.queue.writeBuffer(this.facesBuffer, 0, mesh.faces);
+    device.queue.writeBuffer(this.edgesBuffer, 0, mesh.edges);
+    device.queue.writeBuffer(this.faceOffsetBuffer, 0, mesh.faceOffset);
+    device.queue.writeBuffer(this.faceOffsetPtrBuffer, 0, mesh.faceOffsetPtr);
+    device.queue.writeBuffer(this.edgeOffsetPtrBuffer, 0, mesh.edgeOffsetPtr);
     device.queue.writeBuffer(
-      this.baseFaceOffsetPtrBuffer,
-      0,
-      mesh.faceOffsetPtr
-    );
-    device.queue.writeBuffer(
-      this.baseEdgeOffsetPtrBuffer,
-      0,
-      mesh.edgeOffsetPtr
-    );
-    device.queue.writeBuffer(
-      this.baseVertexOffsetPtrBuffer,
+      this.vertexOffsetPtrBuffer,
       0,
       mesh.vertexOffsetPtr
     );
-    device.queue.writeBuffer(this.baseFaceValenceBuffer, 0, mesh.faceValence);
-    device.queue.writeBuffer(this.baseVerticesBuffer, 0, mesh.baseVertices);
-    device.queue.writeBuffer(this.baseVertexOffsetBuffer, 0, mesh.vertexOffset);
+    device.queue.writeBuffer(this.faceValenceBuffer, 0, mesh.faceValence);
     device.queue.writeBuffer(
-      this.baseVertexValenceBuffer,
+      this.vertexNeighborsBuffer,
       0,
-      mesh.vertexValence
+      mesh.vertexNeighbors
     );
-    device.queue.writeBuffer(this.baseVertexIndexBuffer, 0, mesh.vertexIndex);
+    device.queue.writeBuffer(this.vertexOffsetBuffer, 0, mesh.vertexOffset);
+    device.queue.writeBuffer(this.vertexValenceBuffer, 0, mesh.vertexValence);
+    device.queue.writeBuffer(this.vertexIndexBuffer, 0, mesh.vertexIndex);
     device.queue.writeBuffer(this.triangleIndicesBuffer, 0, mesh.triangles);
     device.queue.writeBuffer(this.verticesBuffer, 0, mesh.vertices);
     device.queue.writeBuffer(this.facetNormalsBuffer, 0, mesh.facetNormals);
@@ -837,17 +827,17 @@ class GPUContext {
     uni.set({ levelCount: mesh.levelCount, levelBasePtr: mesh.levelBasePtr });
   }
   destroyGPUBuffers() {
-    this.baseFacesBuffer.destroy();
-    this.baseEdgesBuffer.destroy();
-    this.baseFaceOffsetBuffer.destroy();
-    this.baseFaceOffsetPtrBuffer.destroy();
-    this.baseEdgeOffsetPtrBuffer.destroy();
-    this.baseVertexOffsetPtrBuffer.destroy();
-    this.baseFaceValenceBuffer.destroy();
-    this.baseVerticesBuffer.destroy();
-    this.baseVertexOffsetBuffer.destroy();
-    this.baseVertexValenceBuffer.destroy();
-    this.baseVertexIndexBuffer.destroy();
+    this.facesBuffer.destroy();
+    this.edgesBuffer.destroy();
+    this.faceOffsetBuffer.destroy();
+    this.faceOffsetPtrBuffer.destroy();
+    this.edgeOffsetPtrBuffer.destroy();
+    this.vertexOffsetPtrBuffer.destroy();
+    this.faceValenceBuffer.destroy();
+    this.vertexNeighborsBuffer.destroy();
+    this.vertexOffsetBuffer.destroy();
+    this.vertexValenceBuffer.destroy();
+    this.vertexIndexBuffer.destroy();
     this.triangleIndicesBuffer.destroy();
     this.verticesBuffer.destroy();
     this.facetNormalsBuffer.destroy();
