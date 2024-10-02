@@ -187,6 +187,7 @@ const facePointsModule = device.createShaderModule({
       @builtin(global_invocation_id) id: vec3u) {
       let i = id.x; /* [0, number of faces) */
       if (i < myUniforms.levelCount[myUniforms.level].f) {
+        // faceOffsetPtr[level] points to the first element in level's faceOffset
         let in = i + baseFaceOffsetPtr[myUniforms.level];
         let out = i + myUniforms.levelBasePtr[myUniforms.level].f;
         vertices[out] = vec3f(0,0,0);
@@ -226,6 +227,7 @@ const edgePointsModule = device.createShaderModule({
     @group(0) @binding(1) var<storage, read_write> vertices: array<vec3f>;
     /* input */
     @group(0) @binding(2) var<storage, read> baseEdges: array<vec4u>;
+    @group(0) @binding(3) var<storage, read> baseEdgeOffsetPtr: array<u32>;
 
     /** "Since a single (non-boundary) edge always has two incident faces and vertices,
      * the edge kernel needs a buffer for the indices of these entities."
@@ -237,8 +239,9 @@ const edgePointsModule = device.createShaderModule({
       @builtin(global_invocation_id) id: vec3u) {
         let i = id.x;
         if (i < myUniforms.levelCount[myUniforms.level].e) {
+          /* edgeID is the index into the baseEdges data structure */
+          let edgeID = i + baseEdgeOffsetPtr[myUniforms.level];
           let out = i + myUniforms.levelBasePtr[myUniforms.level].e;
-          let edgeID = i;
           vertices[out] = vec3f(0,0,0);
           for (var j: u32 = 0; j < 4; j++) {
             vertices[out] += vertices[baseEdges[edgeID][j]];
@@ -613,6 +616,12 @@ class GPUContext {
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
+    this.baseEdgeOffsetPtrBuffer = device.createBuffer({
+      label: "base edge offset",
+      size: mesh.edgeOffsetPtr.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+
     this.baseVerticesBuffer = device.createBuffer({
       label: "base vertices buffer",
       size: mesh.baseVertices.byteLength,
@@ -738,6 +747,7 @@ class GPUContext {
         { binding: 0, resource: { buffer: uniformsBuffer } },
         { binding: 1, resource: { buffer: this.verticesBuffer } },
         { binding: 2, resource: { buffer: this.baseEdgesBuffer } },
+        { binding: 3, resource: { buffer: this.baseEdgeOffsetPtrBuffer } },
       ],
     });
 
@@ -792,6 +802,11 @@ class GPUContext {
       0,
       mesh.faceOffsetPtr
     );
+    device.queue.writeBuffer(
+      this.baseEdgeOffsetPtrBuffer,
+      0,
+      mesh.edgeOffsetPtr
+    );
     device.queue.writeBuffer(this.baseFaceValenceBuffer, 0, mesh.faceValence);
     device.queue.writeBuffer(this.baseVerticesBuffer, 0, mesh.baseVertices);
     device.queue.writeBuffer(this.baseVertexOffsetBuffer, 0, mesh.vertexOffset);
@@ -812,6 +827,7 @@ class GPUContext {
     this.baseEdgesBuffer.destroy();
     this.baseFaceOffsetBuffer.destroy();
     this.baseFaceOffsetPtrBuffer.destroy();
+    this.baseEdgeOffsetPtrBuffer.destroy();
     this.baseFaceValenceBuffer.destroy();
     this.baseVerticesBuffer.destroy();
     this.baseVertexOffsetBuffer.destroy();

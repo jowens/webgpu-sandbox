@@ -43,7 +43,8 @@ class SubdivMesh {
     this.triangles = [];
     this.faceValence = [];
     this.faceOffset = [];
-    this.faceOffsetPtr = [-1]; // indexed by level, points to faceOffset
+    this.faceOffsetPtr = [-1]; // indexed by level, points into faceOffset
+    this.edgeOffsetPtr = [-1]; // indexed by level, points into edges
     this.edges = [];
     this.baseVertices = [];
     this.vertexOffset = [];
@@ -52,14 +53,14 @@ class SubdivMesh {
     this.vertexSize = 4; // # elements per vertex (ignore w coord for now)
     this.normalSize = 4; // float4s (ignore w coord for now)
 
-    // populate first TWO levels of levelCount and levelBasePtr
+    // populate first level of levelCount and levelBasePtr
     // assumes manifold surface!
     this.levelCount = [
       new Level(
         facesIn.length,
-        facesIn.length + verticesIn.length - 2,
+        facesIn.length + verticesIn.length - 2, // <- manifold assumption
         verticesIn.length,
-        0 // triangle starting point
+        0 // triangle starting point, will increment later
       ),
     ];
     // the only points in the vertex buffer @ level 0 are vertices, so all offsets are 0
@@ -305,6 +306,8 @@ class SubdivMesh {
       //   and a map (edgeToEdgeID) full of {edge -> edgeID}
       // we iterate over edgeToEdgeID because its entry order
       //   is the canonical order
+      // edgeOffsetPtr[level]: starting point for edges for this level
+      this.edgeOffsetPtr.push(this.edges.size / 4);
       edgeToEdgeID.forEach((edgeID, edge) => {
         const v = edge.split(",").map((n) => parseInt(n, 10));
         const reverseEdge = edgeToKey(v[1], v[0]);
@@ -374,6 +377,7 @@ class SubdivMesh {
     this.faceValence = new Uint32Array(this.faceValence);
     this.faceOffset = new Uint32Array(this.faceOffset);
     this.faceOffsetPtr = new Uint32Array(this.faceOffsetPtr);
+    this.edgeOffsetPtr = new Uint32Array(this.edgeOffsetPtr);
     this.vertexValence = new Uint32Array(this.vertexValence);
     this.vertexOffset = new Uint32Array(this.vertexOffset);
     this.vertexIndex = new Uint32Array(this.vertexIndex);
