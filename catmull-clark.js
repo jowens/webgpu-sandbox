@@ -1,5 +1,3 @@
-// inspiration: https://webgpufundamentals.org/webgpu/lessons/webgpu-fundamentals.html
-
 import { Pane } from "https://cdn.jsdelivr.net/npm/tweakpane@4.0.3/dist/tweakpane.min.js";
 import {
   vec3,
@@ -15,13 +13,12 @@ const canTimestamp = adapter.features.has("timestamp-query");
 const device = await adapter?.requestDevice({
   requiredFeatures: [...(canTimestamp ? ["timestamp-query"] : [])], // ...: conditional add
 });
-// const device = await adapter?.requestDevice();
 if (!device) {
   fail("Fatal error: Device does not support WebGPU.");
 }
 const timingHelper = new TimingHelper(device);
 
-// we can set runtime params from the input URL
+// We can set runtime params from the input URL!
 const urlParams = new URL(window.location.href).searchParams;
 const debug = urlParams.get("debug"); // string or undefined
 // if we want more:
@@ -583,6 +580,13 @@ async function loadMesh(url) {
 
 let mesh = await loadMesh(modelToURL[modelParams.model]);
 
+/**
+ * class GPUContext holds all data that is relevant to the GPU side
+ * It is constructed from a CPU-side (JS) Mesh data structure
+ * It is a class because we rebuild it whenever we load a new mesh
+ * It holds all GPU buffers and bind groups, both of which are
+ *   rebuilt whenever a new Mesh is loaded
+ */
 class GPUContext {
   createGPUBuffers() {
     // read-only inputs:
@@ -914,7 +918,7 @@ async function frame() {
    * Definitely there's two things that need to go CPU->GPU every frame
    *
    * (1) Uniforms, since they can be altered by the user at runtime
-   * in the pane (also time is here)
+   *     in the pane (also time is here)
    * (2) Transformation matrix, since it changes every frame
    */
   device.queue.writeBuffer(uniformsBuffer, 0, uni.arrayBuffer);
@@ -942,9 +946,15 @@ async function frame() {
   computePass.dispatchWorkgroups(
     Math.ceil(mesh.levelCount[0].v / WORKGROUP_SIZE)
   );
+
+  /** The face, edge, and vertex kernels run once per level */
   for (var level = 1; level <= uni.views.subdivLevel[0]; level++) {
+    // update the level on the CPU ...
     uni.views.level[0] = level;
-    device.queue.writeBuffer(uniformsBuffer, 0, uni.arrayBuffer); // updates level
+    // ... and GPU. The following kernels need to know the level because
+    // they use it to select input and output pointers within the GPU-side
+    // data structures
+    device.queue.writeBuffer(uniformsBuffer, 0, uni.arrayBuffer);
 
     computePass.setPipeline(facePipeline);
     computePass.setBindGroup(0, ctx.faceBindGroup);
@@ -1027,8 +1037,6 @@ async function frame() {
   renderPass.setPipeline(renderPipeline);
   renderPass.setBindGroup(0, ctx.renderBindGroup);
   renderPass.setVertexBuffer(0, ctx.verticesBuffer);
-  let startIdx = -1;
-  let endIdx = -1;
   const now = uni.views.time[0];
 
   renderPass.setIndexBuffer(ctx.triangleIndicesBuffer, "uint32");
