@@ -993,25 +993,25 @@ async function frame() {
   // this is (from, to)
   if (debug) {
     encoder.copyBufferToBuffer(
-      verticesBuffer,
+      ctx.verticesBuffer,
       0,
-      mappableVerticesResultBuffer,
+      ctx.mappableVerticesResultBuffer,
       0,
-      mappableVerticesResultBuffer.size
+      ctx.mappableVerticesResultBuffer.size
     );
     encoder.copyBufferToBuffer(
-      facetNormalsBuffer,
+      ctx.facetNormalsBuffer,
       0,
-      mappableFacetNormalsResultBuffer,
+      ctx.mappableFacetNormalsResultBuffer,
       0,
-      mappableFacetNormalsResultBuffer.size
+      ctx.mappableFacetNormalsResultBuffer.size
     );
     encoder.copyBufferToBuffer(
-      vertexNormalsBuffer,
+      ctx.vertexNormalsBuffer,
       0,
-      mappableVertexNormalsResultBuffer,
+      ctx.mappableVertexNormalsResultBuffer,
       0,
-      mappableVertexNormalsResultBuffer.size
+      ctx.mappableVertexNormalsResultBuffer.size
     );
   }
 
@@ -1060,21 +1060,21 @@ async function frame() {
 
   // Read the results
   if (debug) {
-    await mappableVerticesResultBuffer.mapAsync(GPUMapMode.READ);
+    await ctx.mappableVerticesResultBuffer.mapAsync(GPUMapMode.READ);
     const verticesResult = new Float32Array(
-      mappableVerticesResultBuffer.getMappedRange().slice()
+      ctx.mappableVerticesResultBuffer.getMappedRange().slice()
     );
-    mappableVerticesResultBuffer.unmap();
-    await mappableFacetNormalsResultBuffer.mapAsync(GPUMapMode.READ);
+    ctx.mappableVerticesResultBuffer.unmap();
+    await ctx.mappableFacetNormalsResultBuffer.mapAsync(GPUMapMode.READ);
     const facetNormalsResult = new Float32Array(
-      mappableFacetNormalsResultBuffer.getMappedRange().slice()
+      ctx.mappableFacetNormalsResultBuffer.getMappedRange().slice()
     );
-    mappableFacetNormalsResultBuffer.unmap();
-    await mappableVertexNormalsResultBuffer.mapAsync(GPUMapMode.READ);
+    ctx.mappableFacetNormalsResultBuffer.unmap();
+    await ctx.mappableVertexNormalsResultBuffer.mapAsync(GPUMapMode.READ);
     const vertexNormalsResult = new Float32Array(
-      mappableVertexNormalsResultBuffer.getMappedRange().slice()
+      ctx.mappableVertexNormalsResultBuffer.getMappedRange().slice()
     );
-    mappableVertexNormalsResultBuffer.unmap();
+    ctx.mappableVertexNormalsResultBuffer.unmap();
     console.log("vertex buffer", verticesResult);
   }
 
@@ -1085,6 +1085,7 @@ async function frame() {
 
   uni.views.time[0] = uni.views.time[0] + uni.views.timestep[0];
   // console.log("time", uni.views.time[0]);
+  // return;
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
