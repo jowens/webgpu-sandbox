@@ -80,7 +80,7 @@ class SubdivMesh {
     // vertexNeighborsMap: v -> [v0 f0 v1 f1 ...]
     //   where v# is the other end of an edge connecting v->v#
     //   and f# is the face to the left of v->v#
-    const vertexNeighborsMap = new Map();
+    const vertexNeighborsMap = [new Map()];
     for (let i = 0; i < this.levelCount[0].v; i++) {
       this.vertices.push(
         verticesIn[i].x,
@@ -96,7 +96,6 @@ class SubdivMesh {
           this.largestInput
         )
       );
-      vertexNeighborsMap.set(i, []);
     }
     if (this.scaleInput) {
       for (let i = 0; i < this.levelCount[0].v; i++) {
@@ -163,6 +162,8 @@ class SubdivMesh {
       const edgeToFace = new Map();
       // edgePointID: [v_start,v_end] -> edgePointID
       const edgeToEdgeID = new Map();
+      // vertexNeighborsMap: list of neighbors per vertex
+      vertexNeighborsMap.push(new Map());
 
       /* how many edges are there? Could compute in two ways:
        * - Euler characteristic E = V + F - 2 (manifold only)
@@ -210,12 +211,7 @@ class SubdivMesh {
             console.log(`ERROR: edge ${edge} already in edgeToFace`);
           }
           edgeToFace.set(edge, facePointID);
-          console.log(
-            "Looking at edge ",
-            edge,
-            ", now has facePointID",
-            facePointID
-          );
+          // console.log(            "Looking at edge ",            edge,            ", now has facePointID",            facePointID          );
           /**  in a manifold mesh, each edge will be set twice, so it's
            *   OK if it's already set; but if it sets here, it better be set twice */
           if (edgeToEdgeID.has(edge) ^ edgeToEdgeID.has(edgeRev)) {
@@ -229,6 +225,11 @@ class SubdivMesh {
           }
         }
       }
+      Array.from(seenVertices)
+        .sort((a, b) => a - b) // numerical sort
+        .forEach((v) => vertexNeighborsMap[level].set(v, []));
+      // console.log(seenVertices, vertexNeighborsMap);
+
       this.levelCount[level].e = edgeToEdgeID.size / 2;
       this.levelCount[level].v = seenVertices.size;
       this.levelBasePtr[level].v =
@@ -241,7 +242,7 @@ class SubdivMesh {
         i < facesInternal[level - 1].length;
         i++, fPointsPtr++
       ) {
-        console.log("Considering face ", facesInternal[level - 1][i]);
+        // console.log("Considering face ", facesInternal[level - 1][i]);
         // to make nomenclature easier, let's have tiny functions v and e
         // they have to be arrow functions to inherit "this" from the surrounding scope
         // v says "given vertex idx, what will be its v point?"
@@ -281,7 +282,7 @@ class SubdivMesh {
             e(j, mod(j + 1, valence)),
           ]);
           this.faces.push(...facesInternal[level].at(-1)); // same as above
-          console.log("Output face: ", facesInternal[level].at(-1));
+          // console.log("Output face: ", facesInternal[level].at(-1));
           this.triangles.push(
             /** there exists likely a smarter way of subdividing the quad:
              * what if (e.g.) it's non-convex? we should measure
@@ -333,15 +334,17 @@ class SubdivMesh {
         // iterating through edgeToEdgeID ensures a consistent order
         if (f[1] > f[0]) {
           // in Niessner, all edges have f[1] > f[0]
+          // console.log(            `[${level}]`,            "Pushing into edge array:",            v[0],            f[0],            v[1],            f[1]          );
           this.edges.push(v[0], f[0], v[1], f[1]);
-          vertexNeighborsMap.get(v[0]).push(v[1], f[1]);
-          vertexNeighborsMap.get(v[1]).push(v[0], f[0]);
+          // console.log(vertexNeighborsMap[level]);
+          vertexNeighborsMap[level].get(v[0]).push(v[1], f[1]);
+          vertexNeighborsMap[level].get(v[1]).push(v[0], f[0]);
         }
       });
 
       // now we populate baseVertices
       var vertexOffset = 0;
-      vertexNeighborsMap.forEach((neighbors, vertex) => {
+      vertexNeighborsMap[level].forEach((neighbors, vertex) => {
         this.vertexIndex.push(vertex);
         this.baseVertices.push(neighbors);
         this.vertexValence.push(neighbors.length / 2);
