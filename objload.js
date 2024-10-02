@@ -243,7 +243,16 @@ class SubdivMesh {
         // they have to be arrow functions to inherit "this" from the surrounding scope
         // v says "given vertex idx, what will be its v point?"
         const v = (idx) => {
-          return this.levelBasePtr[level].v + facesInternal[level - 1][i][idx];
+          /** Complicated logic!
+           * - Source is something in the face region of level-1
+           * - So subtract off that bias
+           * - Then map to the vertex region of level
+           */
+          return (
+            this.levelBasePtr[level].v -
+            this.levelBasePtr[level - 1].f +
+            facesInternal[level - 1][i][idx]
+          );
         };
         const e = (v0, v1) => {
           const key = edgeToKey(
