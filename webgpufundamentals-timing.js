@@ -1,7 +1,7 @@
 // copied from
 // https://webgpufundamentals.org/webgpu/lessons/webgpu-timing.html by gman@
 
-function assert(cond, msg = '') {
+function assert(cond, msg = "") {
   if (!cond) {
     throw new Error(msg);
   }
@@ -14,16 +14,20 @@ class TimingHelper {
   #resolveBuffer;
   #resultBuffer;
   #resultBuffers = [];
-  // state can be 'free', 'need resolve', 'wait for result'
-  #state = 'free';
+  #passNumber;
+  #maxPasses;
+  // state can be 'free', 'in progress', 'need resolve', 'wait for result'
+  #state = "free";
 
-  constructor(device) {
+  constructor(device, maxPasses = 1) {
     this.#device = device;
-    this.#canTimestamp = device.features.has('timestamp-query');
+    this.#passNumber = 0;
+    this.#maxPasses = maxPasses;
+    this.#canTimestamp = device.features.has("timestamp-query");
     if (this.#canTimestamp) {
       this.#querySet = device.createQuerySet({
-         type: 'timestamp',
-         count: 2,
+        type: "timestamp",
+        count: maxPasses * 2,
       });
       this.#resolveBuffer = device.createBuffer({
         size: this.#querySet.count * 8,
@@ -34,23 +38,35 @@ class TimingHelper {
 
   #beginTimestampPass(encoder, fnName, descriptor) {
     if (this.#canTimestamp) {
-      assert(this.#state === 'free', 'state not free');
-      this.#state = 'need resolve';
+      assert(
+        /* haven't started or finished all passes yet */
+        this.#state === "free" || this.#state == "in progress",
+        `state not free (state = ${this.#state})`
+      );
 
       const pass = encoder[fnName]({
         ...descriptor,
         ...{
           timestampWrites: {
             querySet: this.#querySet,
-            beginningOfPassWriteIndex: 0,
-            endOfPassWriteIndex: 1,
+            beginningOfPassWriteIndex: this.#passNumber * 2,
+            endOfPassWriteIndex: this.#passNumber * 2 + 1,
           },
         },
       });
 
+      this.#passNumber++;
+      if (this.#passNumber == this.#maxPasses) {
+        /* finished all passes */
+        this.#state = "need resolve";
+      } else {
+        /* still have passes to do */
+        this.#state = "in progress";
+      }
+
       const resolve = () => this.#resolveTiming(encoder);
-      pass.end = (function(origFn) {
-        return function() {
+      pass.end = (function (origFn) {
+        return function () {
           origFn.call(this);
           resolve();
         };
@@ -63,42 +79,63 @@ class TimingHelper {
   }
 
   beginRenderPass(encoder, descriptor = {}) {
-    return this.#beginTimestampPass(encoder, 'beginRenderPass', descriptor);
+    return this.#beginTimestampPass(encoder, "beginRenderPass", descriptor);
   }
 
   beginComputePass(encoder, descriptor = {}) {
-    return this.#beginTimestampPass(encoder, 'beginComputePass', descriptor);
+    return this.#beginTimestampPass(encoder, "beginComputePass", descriptor);
   }
 
   #resolveTiming(encoder) {
     if (!this.#canTimestamp) {
       return;
     }
-    assert(this.#state === 'need resolve', 'must call addTimestampToPass');
-    this.#state = 'wait for result';
+    if (this.#passNumber != this.#maxPasses) {
+      return;
+    }
+    assert(this.#state === "need resolve", "must call addTimestampToPass");
+    this.#state = "wait for result";
 
-    this.#resultBuffer = this.#resultBuffers.pop() || this.#device.createBuffer({
-      size: this.#resolveBuffer.size,
-      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-    });
+    this.#resultBuffer =
+      this.#resultBuffers.pop() ||
+      this.#device.createBuffer({
+        size: this.#resolveBuffer.size,
+        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+      });
 
-    encoder.resolveQuerySet(this.#querySet, 0, this.#querySet.count, this.#resolveBuffer, 0);
-    encoder.copyBufferToBuffer(this.#resolveBuffer, 0, this.#resultBuffer, 0, this.#resultBuffer.size);
+    encoder.resolveQuerySet(
+      this.#querySet,
+      0,
+      this.#querySet.count,
+      this.#resolveBuffer,
+      0
+    );
+    encoder.copyBufferToBuffer(
+      this.#resolveBuffer,
+      0,
+      this.#resultBuffer,
+      0,
+      this.#resultBuffer.size
+    );
   }
 
   async getResult() {
     if (!this.#canTimestamp) {
       return 0;
     }
-    assert(this.#state === 'wait for result', 'must call resolveTiming');
-    this.#state = 'free';
+    assert(this.#state === "wait for result", "must call resolveTiming");
+    this.#state = "free";
 
     const resultBuffer = this.#resultBuffer;
     await resultBuffer.mapAsync(GPUMapMode.READ);
     const times = new BigInt64Array(resultBuffer.getMappedRange());
-    const duration = Number(times[1] - times[0]);
+    /* I need to read about functional programming in JS to make below pretty */
+    const durations = [];
+    for (var idx = 0; idx < times.length; idx += 2) {
+      durations.push(Number(times[idx + 1] - times[idx]));
+    }
     resultBuffer.unmap();
     this.#resultBuffers.push(resultBuffer);
-    return duration;
+    return durations;
   }
 }

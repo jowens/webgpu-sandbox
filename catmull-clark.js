@@ -16,11 +16,15 @@ const device = await adapter?.requestDevice({
 if (!device) {
   fail("Fatal error: Device does not support WebGPU.");
 }
-const timingHelper = new TimingHelper(device);
 
 // We can set runtime params from the input URL!
 const urlParams = new URL(window.location.href).searchParams;
 const debug = urlParams.get("debug"); // string or undefined
+let frameCount = urlParams.get("frameCount");
+frameCount = frameCount == undefined ? -1 : parseInt(frameCount, 10);
+const separateComputePasses =
+  urlParams.get("separateComputePasses") != undefined; // true or false
+
 // if we want more:
 //   Object.fromEntries(new URL(window.location.href).searchParams.entries());
 // if url is 'https://foo.com/bar.html?abc=123&def=456&xyz=banana` then params is
@@ -60,14 +64,16 @@ uni.set({
   TOGGLE_DURATION: 400.0, // number of timesteps between model toggle
   WIGGLE_MAGNITUDE: 0, // 0.002, //0.025, // how much vertices are perturbed
   WIGGLE_SPEED: 0.05, // how quickly perturbations occur
-  subdivLevel: 0,
+  subdivLevel: urlParams.get("subdivLevel")
+    ? parseInt(urlParams.get("subdivLevel"), 10)
+    : 0,
   level: 0,
   time: 0.0,
   timestep: 1.0,
 });
 
 const modelParams = {
-  model: "square_pyramid", // default starting point
+  model: urlParams.get("model") ? urlParams.get("model") : "square_pyramid", // default starting point
 };
 
 const modelToURL = {
@@ -932,20 +938,45 @@ async function frame() {
     transformationMatrix.byteLength
   );
 
+  function passBoundary(
+    separateComputePasses,
+    timingHelper,
+    computePasses,
+    encoder
+  ) {
+    if (separateComputePasses) {
+      computePasses.at(-1).end();
+      computePasses.push(
+        timingHelper.beginComputePass(encoder, {
+          label: `compute pass ${
+            computePasses.length - 1
+          }, all compute kernels`,
+        })
+      );
+    }
+  }
+
   // Encode commands to do the computation
   const encoder = device.createCommandEncoder({
     label:
       "overall computation (perturb, face, edge, vertex, normals) + graphics encoder",
   });
 
-  const computePass = timingHelper.beginComputePass(encoder, {
-    label: "compute pass, all compute kernels",
-  });
-  computePass.setPipeline(perturbPipeline);
-  computePass.setBindGroup(0, ctx.perturbBindGroup);
-  computePass.dispatchWorkgroups(
-    Math.ceil(mesh.levelCount[0].v / WORKGROUP_SIZE)
+  const kernels = separateComputePasses ? uni.views.subdivLevel[0] * 3 + 3 : 1;
+
+  const timingHelper = new TimingHelper(device, kernels);
+  const computePasses = [];
+  computePasses.push(
+    timingHelper.beginComputePass(encoder, {
+      label: `compute pass ${computePasses.length - 1}, all compute kernels`,
+    })
   );
+  computePasses.at(-1).setPipeline(perturbPipeline);
+  computePasses.at(-1).setBindGroup(0, ctx.perturbBindGroup);
+  computePasses
+    .at(-1)
+    .dispatchWorkgroups(Math.ceil(mesh.levelCount[0].v / WORKGROUP_SIZE));
+  passBoundary(separateComputePasses, timingHelper, computePasses, encoder);
 
   /** The face, edge, and vertex kernels run once per level */
   for (var level = 1; level <= uni.views.subdivLevel[0]; level++) {
@@ -956,37 +987,41 @@ async function frame() {
     // data structures
     device.queue.writeBuffer(uniformsBuffer, 0, uni.arrayBuffer);
 
-    computePass.setPipeline(facePipeline);
-    computePass.setBindGroup(0, ctx.faceBindGroup);
-    computePass.dispatchWorkgroups(
-      Math.ceil(mesh.levelCount[level].f / WORKGROUP_SIZE)
-    );
+    computePasses.at(-1).setPipeline(facePipeline);
+    computePasses.at(-1).setBindGroup(0, ctx.faceBindGroup);
+    computePasses
+      .at(-1)
+      .dispatchWorkgroups(Math.ceil(mesh.levelCount[level].f / WORKGROUP_SIZE));
+    passBoundary(separateComputePasses, timingHelper, computePasses, encoder);
 
-    computePass.setPipeline(edgePipeline);
-    computePass.setBindGroup(0, ctx.edgeBindGroup);
-    computePass.dispatchWorkgroups(
-      Math.ceil(mesh.levelCount[level].e / WORKGROUP_SIZE)
-    );
+    computePasses.at(-1).setPipeline(edgePipeline);
+    computePasses.at(-1).setBindGroup(0, ctx.edgeBindGroup);
+    computePasses
+      .at(-1)
+      .dispatchWorkgroups(Math.ceil(mesh.levelCount[level].e / WORKGROUP_SIZE));
+    passBoundary(separateComputePasses, timingHelper, computePasses, encoder);
 
-    computePass.setPipeline(vertexPipeline);
-    computePass.setBindGroup(0, ctx.vertexBindGroup);
-    computePass.dispatchWorkgroups(
-      Math.ceil(mesh.levelCount[level].v / WORKGROUP_SIZE)
-    );
+    computePasses.at(-1).setPipeline(vertexPipeline);
+    computePasses.at(-1).setBindGroup(0, ctx.vertexBindGroup);
+    computePasses
+      .at(-1)
+      .dispatchWorkgroups(Math.ceil(mesh.levelCount[level].v / WORKGROUP_SIZE));
+    passBoundary(separateComputePasses, timingHelper, computePasses, encoder);
   }
 
-  computePass.setPipeline(facetNormalsPipeline);
-  computePass.setBindGroup(0, ctx.facetNormalsBindGroup);
-  computePass.dispatchWorkgroups(
-    Math.ceil(mesh.facetNormals.length / WORKGROUP_SIZE)
-  );
+  computePasses.at(-1).setPipeline(facetNormalsPipeline);
+  computePasses.at(-1).setBindGroup(0, ctx.facetNormalsBindGroup);
+  computePasses
+    .at(-1)
+    .dispatchWorkgroups(Math.ceil(mesh.facetNormals.length / WORKGROUP_SIZE));
 
-  computePass.setPipeline(vertexNormalsPipeline);
-  computePass.setBindGroup(0, ctx.vertexNormalsBindGroup);
-  computePass.dispatchWorkgroups(
-    Math.ceil(mesh.vertexNormals.length / WORKGROUP_SIZE)
-  );
-  computePass.end();
+  passBoundary(separateComputePasses, timingHelper, computePasses, encoder);
+  computePasses.at(-1).setPipeline(vertexNormalsPipeline);
+  computePasses.at(-1).setBindGroup(0, ctx.vertexNormalsBindGroup);
+  computePasses
+    .at(-1)
+    .dispatchWorkgroups(Math.ceil(mesh.vertexNormals.length / WORKGROUP_SIZE));
+  computePasses.at(-1).end();
 
   // Encode a command to copy the results to a mappable buffer.
   // this is (from, to)
@@ -1077,12 +1112,16 @@ async function frame() {
 
   /* is this correct for getting timing info? */
   timingHelper.getResult().then((res) => {
-    // console.log("timing helper result", res);
+    console.log("Compute pass time:", res, "ns");
   });
 
   uni.views.time[0] = uni.views.time[0] + uni.views.timestep[0];
   // console.log("time", uni.views.time[0]);
-  // return;
+  if (frameCount == 0) {
+    return;
+  } else if (frameCount > 0) {
+    frameCount--;
+  }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
