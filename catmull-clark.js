@@ -8,22 +8,24 @@ import {
   makeStructuredView,
 } from "https://greggman.github.io/webgpu-utils/dist/1.x/webgpu-utils.module.js";
 
-const adapter = await navigator.gpu?.requestAdapter();
-const canTimestamp = adapter.features.has("timestamp-query");
-const device = await adapter?.requestDevice({
-  requiredFeatures: [...(canTimestamp ? ["timestamp-query"] : [])], // ...: conditional add
-});
-if (!device) {
-  fail("Fatal error: Device does not support WebGPU.");
-}
-
 // We can set runtime params from the input URL!
 const urlParams = new URL(window.location.href).searchParams;
 const debug = urlParams.get("debug"); // string or undefined
 let frameCount = urlParams.get("frameCount");
 frameCount = frameCount == undefined ? -1 : parseInt(frameCount, 10);
-const separateComputePasses =
-  urlParams.get("separateComputePasses") != undefined; // true or false
+const separateComputePasses = urlParams.get("separateComputePasses");
+const timingEnabled = urlParams.get("timing");
+
+const adapter = await navigator.gpu?.requestAdapter();
+const canTimestamp = adapter.features.has("timestamp-query");
+const device = await adapter?.requestDevice({
+  requiredFeatures: [
+    ...(canTimestamp && timingEnabled ? ["timestamp-query"] : []),
+  ], // ...: conditional add
+});
+if (!device) {
+  fail("Fatal error: Device does not support WebGPU.");
+}
 
 // if we want more:
 //   Object.fromEntries(new URL(window.location.href).searchParams.entries());
@@ -388,8 +390,8 @@ const facetNormalsModule = device.createShaderModule({
       }`,
 });
 
-const vertexNormalsModule = device.createShaderModule({
-  label: "compute vertex normals module",
+const vertexNormalsON2Module = device.createShaderModule({
+  label: "compute vertex normals (O(n^2)) module",
   code: /* wgsl */ `
     ${uniformsCode} /* this specifies @group(0) @binding(0) */
     /* output */
@@ -413,6 +415,33 @@ const vertexNormalsModule = device.createShaderModule({
               }
             }
           }
+          vertexNormals[vtx] = normalize(vertexNormals[vtx]);
+        }
+    }`,
+});
+
+const vertexNormalsModule = device.createShaderModule({
+  label: "compute vertex normals (O(n)) module",
+  code: /* wgsl */ `
+    ${uniformsCode} /* this specifies @group(0) @binding(0) */
+    /* output */
+    @group(0) @binding(1) var<storage, read_write> vertexNormals: array<vec3f>;
+    /* input */
+    @group(0) @binding(2) var<storage, read> facetNormals: array<vec3f>;
+    @group(0) @binding(3) var<storage, read> vertexToTriangles: array<u32>;
+    @group(0) @binding(4) var<storage, read> vertexToTrianglesOffset: array<u32>;
+    @group(0) @binding(5) var<storage, read> vertexToTrianglesValence: array<u32>;
+
+    /* see facetNormalsModule for algorithm */
+
+    @compute @workgroup_size(${WORKGROUP_SIZE}) fn vertexNormalsKernel(
+      @builtin(global_invocation_id) id: vec3u) {
+        let vtx = id.x;
+        if (vtx < arrayLength(&vertexNormals)) {
+          vertexNormals[vtx] = vec3f(0, 0, 0);
+          for (var neighbor: u32 = vertexToTrianglesOffset[vtx]; neighbor < vertexToTrianglesOffset[vtx] + vertexToTrianglesValence[vtx]; neighbor++) {
+            vertexNormals[vtx] += facetNormals[vertexToTriangles[neighbor]];
+            }
           vertexNormals[vtx] = normalize(vertexNormals[vtx]);
         }
     }`,
@@ -500,6 +529,14 @@ const facetNormalsPipeline = device.createComputePipeline({
   layout: "auto",
   compute: {
     module: facetNormalsModule,
+  },
+});
+
+const vertexNormalsON2Pipeline = device.createComputePipeline({
+  label: "vertex normals O(N^2) compute pipeline",
+  layout: "auto",
+  compute: {
+    module: vertexNormalsON2Module,
   },
 });
 
@@ -669,6 +706,24 @@ class GPUContext {
         GPUBufferUsage.INDEX | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
+    this.vertexToTrianglesBuffer = device.createBuffer({
+      label: "vertex to triangles buffer",
+      size: mesh.vertexToTriangles.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+
+    this.vertexToTrianglesOffsetBuffer = device.createBuffer({
+      label: "vertex to triangles offset buffer",
+      size: mesh.vertexToTrianglesOffset.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+
+    this.vertexToTrianglesValenceBuffer = device.createBuffer({
+      label: "vertex to triangles valence buffer",
+      size: mesh.vertexToTrianglesValence.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+
     // vertex buffer is both input and output
     this.verticesBuffer = device.createBuffer({
       label: "vertex buffer",
@@ -799,6 +854,25 @@ class GPUContext {
         // { binding: 0, resource: { buffer: uniformsBuffer } },
         { binding: 1, resource: { buffer: this.vertexNormalsBuffer } },
         { binding: 2, resource: { buffer: this.facetNormalsBuffer } },
+        { binding: 3, resource: { buffer: this.vertexToTrianglesBuffer } },
+        {
+          binding: 4,
+          resource: { buffer: this.vertexToTrianglesOffsetBuffer },
+        },
+        {
+          binding: 5,
+          resource: { buffer: this.vertexToTrianglesValenceBuffer },
+        },
+      ],
+    });
+
+    this.vertexNormalsON2BindGroup = device.createBindGroup({
+      label: "bindGroup for computing vertex normals",
+      layout: vertexNormalsON2Pipeline.getBindGroupLayout(0),
+      entries: [
+        // { binding: 0, resource: { buffer: uniformsBuffer } },
+        { binding: 1, resource: { buffer: this.vertexNormalsBuffer } },
+        { binding: 2, resource: { buffer: this.facetNormalsBuffer } },
         { binding: 3, resource: { buffer: this.triangleIndicesBuffer } },
       ],
     });
@@ -832,6 +906,21 @@ class GPUContext {
     device.queue.writeBuffer(this.vertexIndexBuffer, 0, mesh.vertexIndex);
     device.queue.writeBuffer(this.triangleIndicesBuffer, 0, mesh.triangles);
     device.queue.writeBuffer(this.verticesBuffer, 0, mesh.vertices);
+    device.queue.writeBuffer(
+      this.vertexToTrianglesBuffer,
+      0,
+      mesh.vertexToTriangles
+    );
+    device.queue.writeBuffer(
+      this.vertexToTrianglesValenceBuffer,
+      0,
+      mesh.vertexToTrianglesValence
+    );
+    device.queue.writeBuffer(
+      this.vertexToTrianglesOffsetBuffer,
+      0,
+      mesh.vertexToTrianglesOffset
+    );
     device.queue.writeBuffer(this.facetNormalsBuffer, 0, mesh.facetNormals);
     device.queue.writeBuffer(this.vertexNormalsBuffer, 0, mesh.vertexNormals);
     uni.set({ levelCount: mesh.levelCount, levelBasePtr: mesh.levelBasePtr });
@@ -850,6 +939,9 @@ class GPUContext {
     this.vertexIndexBuffer.destroy();
     this.triangleIndicesBuffer.destroy();
     this.verticesBuffer.destroy();
+    this.vertexToTrianglesBuffer.destroy();
+    this.vertexToTrianglesValenceBuffer.destroy();
+    this.vertexToTrianglesOffsetBuffer.destroy();
     this.facetNormalsBuffer.destroy();
     this.vertexNormalsBuffer.destroy();
     this.mappableVerticesResultBuffer.destroy();
@@ -1112,7 +1204,7 @@ async function frame() {
 
   /* is this correct for getting timing info? */
   timingHelper.getResult().then((res) => {
-    console.log("Compute pass time:", res, "ns");
+    // console.log("Compute pass time:", res, "ns");
   });
 
   uni.views.time[0] = uni.views.time[0] + uni.views.timestep[0];

@@ -9,6 +9,16 @@ class Level {
 }
 
 class SubdivMesh {
+  exclusive_prefix_sum(inList) {
+    const outList = [];
+    var sum = 0;
+    for (var i = 0; i < inList.length; i++) {
+      outList.push(sum);
+      sum += inList[i];
+    }
+    return outList;
+  }
+
   constructor(verticesIn, facesIn) {
     /* everything prefixed with "this." is a data structure that will go to the GPU */
     /* everything else is internal-only and will not be externally visible */
@@ -30,12 +40,15 @@ class SubdivMesh {
     this.vertexOffset = [];
     this.vertexValence = [];
     this.vertexIndex = [];
+    this.vertexToTriangles = new Array(); // indexed by vertex number, has list of tri neighbors
+    this.vertexToTrianglesOffset = [];
+    this.vertexToTrianglesValence = [];
     this.vertexSize = 4; // # elements per vertex (ignore w coord for now)
     this.normalSize = 4; // float4s (ignore w coord for now)
 
     /** levelCount[L].x is the starting index into the vertices array for level L, point type x
      * levelBasePtr[L].x is the number of point type x in level L
-     * levelBasePtr ~= exclusive-scan(levelCount), mostly
+     * levelBasePtr ~= exclusive-sum-scan(levelCount), mostly
      * now: populate level 0 of levelCount and levelBasePtr
      * assumes manifold surface!
      */
@@ -52,7 +65,7 @@ class SubdivMesh {
 
     this.scaleInput = true; // if true, scales output into [-1,1]^3 box
     this.largestInput = 0.0;
-    this.maxLevel = 3; // valid levels are <= maxLevel
+    this.maxLevel = 4; // valid levels are <= maxLevel
 
     /** OBJ stores faces in CCW order
      * The OBJ (or .OBJ) file format stores vertices in a counterclockwise order by default.
@@ -128,6 +141,14 @@ class SubdivMesh {
           /* triangles: (-3, -2, -1)
            * quads: (-4, -3, -2) (-4, -2, -1) */
         );
+        const triID = this.triangles.length / 3 - 1;
+        for (let k = -3; k < 0; k++) {
+          const vtxID = this.triangles.at(k);
+          if (this.vertexToTriangles[vtxID] == undefined) {
+            this.vertexToTriangles[vtxID] = [];
+          }
+          this.vertexToTriangles[vtxID].push(triID);
+        }
       }
       this.levelCount[0].t += valence - 2;
     }
@@ -299,6 +320,22 @@ class SubdivMesh {
             v(j),
             e(j, mod(j + 1, valence))
           );
+          var triID = this.triangles.length / 3 - 2;
+          for (let k = -6; k < -3; k++) {
+            const vtxID = this.triangles.at(k);
+            if (this.vertexToTriangles[vtxID] == undefined) {
+              this.vertexToTriangles[vtxID] = [];
+            }
+            this.vertexToTriangles[vtxID].push(triID);
+          }
+          triID++;
+          for (let k = -3; k < 0; k++) {
+            const vtxID = this.triangles.at(k);
+            if (this.vertexToTriangles[vtxID] == undefined) {
+              this.vertexToTriangles[vtxID] = [];
+            }
+            this.vertexToTriangles[vtxID].push(triID);
+          }
         }
         this.levelCount[level].t += valence * 2;
       }
@@ -375,6 +412,16 @@ class SubdivMesh {
     this.vertexOffset = new Uint32Array(this.vertexOffset);
     this.vertexIndex = new Uint32Array(this.vertexIndex);
     this.vertexNeighbors = new Uint32Array(this.vertexNeighbors.flat());
+    this.vertexToTrianglesValence = this.vertexToTriangles.map(
+      (tris) => tris.length
+    );
+    this.vertexToTrianglesOffset = new Uint32Array(
+      this.exclusive_prefix_sum(this.vertexToTrianglesValence)
+    );
+    this.vertexToTrianglesValence = new Uint32Array(
+      this.vertexToTrianglesValence
+    );
+    this.vertexToTriangles = new Uint32Array(this.vertexToTriangles.flat());
     /* the next two arrays are empty and will be filled by the GPU */
     this.vertexNormals = new Float32Array(this.verticesSize * this.normalSize);
     this.facetNormals = new Float32Array(
