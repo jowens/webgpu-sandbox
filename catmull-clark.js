@@ -74,8 +74,9 @@ uni.set({
   timestep: 1.0,
 });
 
-const modelParams = {
+const paneParams = {
   model: urlParams.get("model") ? urlParams.get("model") : "square_pyramid", // default starting point
+  shading: "smooth",
 };
 
 const modelToURL = {
@@ -90,9 +91,10 @@ const modelToURL = {
     "https://gist.githubusercontent.com/jowens/508d6d7f70b33010508f3c679abd61ff/raw/0315c1d585a63687034ae4deecb5b49b8d653017/teapot-lower.obj",
   stanford_teapot:
     "https://gist.githubusercontent.com/jowens/5f7bc872317b5fd5f7d72827967f1c9d/raw/1f846ee3229297520dd855b199d21717e30af91b/stanford-teapot.obj",
+  ogre: "http://localhost:8000/meshes/ogre.obj",
 };
 
-const WORKGROUP_SIZE = 64;
+const WORKGROUP_SIZE = 256;
 
 const uniformsBuffer = device.createBuffer({
   size: uni.arrayBuffer.byteLength,
@@ -361,9 +363,8 @@ const facetNormalsModule = device.createShaderModule({
       *
       * OK, so we can't do this approach w/o f32 atomics
       * So we will instead convert this scatter to gather
-      * This is wasteful; every vertex will walk the entire
+      * This is wasteful (O(n^2)); every vertex will walk the entire
       *   index array looking for matches.
-      * Could alternately build a mapping of {vtx->facet}
       *
       * (1) For tri in all triangles:
       *   Fetch all 3 vertices of tri
@@ -376,6 +377,16 @@ const facetNormalsModule = device.createShaderModule({
       *     if my vertex is in that triangle:
       *       normal[vertex] += facet_normal[tri]
       *   normalize(normal[vertex])
+      *
+      * That has terrible peformance.
+      * So, at model load time, build a mapping of {vtx->triangles},
+      *   with valence and offset information
+      *
+      * for vertex in all vertices:
+      *   normal = (0,0,0)
+      *   for triangle in triangle_neighbors[vertex]:
+      *     normal += triangle_normal
+      *   return normalize(normal)
       */
     @compute @workgroup_size(${WORKGROUP_SIZE}) fn facetNormalsKernel(
       @builtin(global_invocation_id) id: vec3u) {
@@ -447,49 +458,59 @@ const vertexNormalsModule = device.createShaderModule({
     }`,
 });
 
-const renderModule = device.createShaderModule({
+function renderCode(shadingType = "") {
+  // or shadingType = @interpolate(flat)
+  return /* wgsl */ `
+  struct VertexInput {
+    @location(0) pos: vec4f,
+    @location(1) vertexNormals: vec3f,
+    @builtin(vertex_index) vertexIndex: u32,
+  };
+
+  struct VertexOutput {
+    @builtin(position) pos: vec4f,
+    @location(0) ${shadingType} color: vec4f,
+  };
+
+  // https://webgpu.github.io/webgpu-samples/?sample=rotatingCube#basic.vert.wgsl
+  struct Uniforms {
+    modelViewProjectionMatrix : mat4x4f,
+  }
+  @binding(0) @group(0) var<uniform> uniforms : Uniforms;
+
+  @vertex
+  fn vertexMain(@location(0) pos: vec4f,
+                @location(1) norm: vec3f,
+                @builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+    var output: VertexOutput;
+    output.pos = uniforms.modelViewProjectionMatrix * pos;
+    output.color = vec4f( // this generates 64 different colors
+      0.35 + select(0, 0.6, (vertexIndex & 1) != 0) - select(0, 0.3, (vertexIndex & 8) != 0),
+      0.35 + select(0, 0.6, (vertexIndex & 2) != 0) - select(0, 0.3, (vertexIndex & 16) != 0),
+      0.35 + select(0, 0.6, (vertexIndex & 4) != 0) - select(0, 0.3, (vertexIndex & 32) != 0),
+      0.75 /* partial transparency might aid debugging */);
+    /* let's try "lighting", in model space */
+    /* this is just a dot product with the infinite white light at (1,1,1) */
+    /* it's just choosing the normal vector as the color, scaled to [0,1] */
+    // output.color = vec4f(norm.x, norm.y, norm.z, 0.75);
+    output.color = vec4f(0.5*(norm.x+1), 0.5*(norm.y+1), 0.5*(norm.z+1), 0.75);
+    return output;
+  }
+
+  @fragment
+  fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
+    return input.color;
+  }`;
+}
+
+const renderModules = [];
+renderModules["smooth"] = device.createShaderModule({
   label: "render module",
-  code: /* wgsl */ `
-    struct VertexInput {
-      @location(0) pos: vec4f,
-      @location(1) vertexNormals: vec3f,
-      @builtin(vertex_index) vertexIndex: u32,
-    };
-
-    struct VertexOutput {
-      @builtin(position) pos: vec4f,
-      @location(0) color: vec4f,
-    };
-
-    // https://webgpu.github.io/webgpu-samples/?sample=rotatingCube#basic.vert.wgsl
-    struct Uniforms {
-      modelViewProjectionMatrix : mat4x4f,
-    }
-    @binding(0) @group(0) var<uniform> uniforms : Uniforms;
-
-    @vertex
-    fn vertexMain(@location(0) pos: vec4f,
-                  @location(1) norm: vec3f,
-                  @builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-      var output: VertexOutput;
-      output.pos = uniforms.modelViewProjectionMatrix * pos;
-      output.color = vec4f( // this generates 64 different colors
-        0.35 + select(0, 0.6, (vertexIndex & 1) != 0) - select(0, 0.3, (vertexIndex & 8) != 0),
-        0.35 + select(0, 0.6, (vertexIndex & 2) != 0) - select(0, 0.3, (vertexIndex & 16) != 0),
-        0.35 + select(0, 0.6, (vertexIndex & 4) != 0) - select(0, 0.3, (vertexIndex & 32) != 0),
-        0.75 /* partial transparency might aid debugging */);
-      /* let's try "lighting", in model space */
-      /* this is just a dot product with the infinite white light at (1,1,1) */
-      /* it's just choosing the normal vector as the color, scaled to [0,1] */
-      // output.color = vec4f(norm.x, norm.y, norm.z, 0.75);
-      output.color = vec4f(0.5*(norm.x+1), 0.5*(norm.y+1), 0.5*(norm.z+1), 0.75);
-      return output;
-    }
-
-    @fragment
-    fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
-      return input.color;
-    }`,
+  code: renderCode(),
+});
+renderModules["flat"] = device.createShaderModule({
+  label: "render module",
+  code: renderCode("@interpolate(flat)"),
 });
 
 const perturbPipeline = device.createComputePipeline({
@@ -554,47 +575,51 @@ const depthTexture = device.createTexture({
   usage: GPUTextureUsage.RENDER_ATTACHMENT,
 });
 
-const renderPipeline = device.createRenderPipeline({
-  label: "render pipeline",
-  layout: "auto",
-  vertex: {
-    module: renderModule,
-    entryPoint: "vertexMain",
-    buffers: [
-      {
-        // Buffer 0
-        arrayStride: 16,
-        attributes: [
+const renderPipelines = [];
+["smooth", "flat"].forEach(
+  (keyword) =>
+    (renderPipelines[keyword] = device.createRenderPipeline({
+      label: "render pipeline",
+      layout: "auto",
+      vertex: {
+        module: renderModules[keyword],
+        entryPoint: "vertexMain",
+        buffers: [
           {
-            shaderLocation: 0, // position
-            format: "float32x3",
-            offset: 0,
+            // Buffer 0
+            arrayStride: 16,
+            attributes: [
+              {
+                shaderLocation: 0, // position
+                format: "float32x3",
+                offset: 0,
+              },
+              {
+                shaderLocation: 1, // normals
+                format: "float32x3",
+                offset: 0,
+              },
+            ],
           },
+          // could add more buffers here
+        ],
+      },
+      fragment: {
+        module: renderModules[keyword],
+        entryPoint: "fragmentMain",
+        targets: [
           {
-            shaderLocation: 1, // normals
-            format: "float32x3",
-            offset: 0,
+            format: canvasFormat,
           },
         ],
       },
-      // could add more buffers here
-    ],
-  },
-  fragment: {
-    module: renderModule,
-    entryPoint: "fragmentMain",
-    targets: [
-      {
-        format: canvasFormat,
+      depthStencil: {
+        depthWriteEnabled: true,
+        depthCompare: "less",
+        format: "depth24plus",
       },
-    ],
-  },
-  depthStencil: {
-    depthWriteEnabled: true,
-    depthCompare: "less",
-    format: "depth24plus",
-  },
-});
+    }))
+);
 
 // create buffers on the GPU to hold data
 
@@ -621,7 +646,7 @@ async function loadMesh(url) {
   return mesh;
 }
 
-let mesh = await loadMesh(modelToURL[modelParams.model]);
+let mesh = await loadMesh(modelToURL[paneParams.model]);
 
 /**
  * class GPUContext holds all data that is relevant to the GPU side
@@ -877,11 +902,15 @@ class GPUContext {
       ],
     });
 
-    this.renderBindGroup = device.createBindGroup({
-      label: "bindGroup for rendering kernel",
-      layout: renderPipeline.getBindGroupLayout(0),
-      entries: [{ binding: 0, resource: { buffer: mvxBuffer } }],
-    });
+    this.renderBindGroups = [];
+    ["smooth", "flat"].forEach(
+      (keyword) =>
+        (this.renderBindGroups[keyword] = device.createBindGroup({
+          label: "bindGroup for rendering kernel",
+          layout: renderPipelines[keyword].getBindGroupLayout(0),
+          entries: [{ binding: 0, resource: { buffer: mvxBuffer } }],
+        }))
+    );
   }
 
   writeToGPUBuffers() {
@@ -957,7 +986,7 @@ class GPUContext {
 
 const pane = new Pane();
 pane
-  .addBinding(modelParams, "model", {
+  .addBinding(paneParams, "model", {
     options: {
       // what it shows : what it returns
       "Square Pyramid": "square_pyramid",
@@ -966,6 +995,7 @@ pane
       Al: "al",
       "Teapot (Low Res)": "teapot_lowres",
       "Stanford Teapot": "stanford_teapot",
+      Ogre: "ogre",
     },
   })
   .on("change", async (ev) => {
@@ -974,6 +1004,13 @@ pane
     ctx = new GPUContext(mesh);
     frame();
   });
+pane.addBinding(paneParams, "shading", {
+  options: {
+    // what it shows : what it returns
+    Smooth: "smooth",
+    Flat: "flat",
+  },
+});
 pane.addBinding(uni.views.ROTATE_CAMERA_SPEED, 0, {
   min: 0,
   max: 1,
@@ -1160,8 +1197,8 @@ async function frame() {
   });
 
   // Now render those tris.
-  renderPass.setPipeline(renderPipeline);
-  renderPass.setBindGroup(0, ctx.renderBindGroup);
+  renderPass.setPipeline(renderPipelines[paneParams.shading]);
+  renderPass.setBindGroup(0, ctx.renderBindGroups[paneParams.shading]);
   renderPass.setVertexBuffer(0, ctx.verticesBuffer);
   const now = uni.views.time[0];
 
