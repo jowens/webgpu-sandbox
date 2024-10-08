@@ -7,6 +7,7 @@
   </head>
 
   <body>
+    <div id="plot"></div>
     <script
       type="text/javascript"
       src="./webgpufundamentals-timing.js"
@@ -17,6 +18,8 @@
         makeShaderDataDefinitions,
         makeStructuredView,
       } from "https://greggman.github.io/webgpu-utils/dist/1.x/webgpu-utils.module.js";
+
+      import * as Plot from "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6/+esm";
 
       const adapter = await navigator.gpu?.requestAdapter();
       const canTimestamp = adapter.features.has("timestamp-query");
@@ -29,9 +32,14 @@
       }
       const timingHelper = new TimingHelper(device);
 
-      const WORKGROUP_SIZE = 1; // assumes 1D workgroups for now
+      // [2**0, 2**11)
+      const workgroupSizes = [...Array(11).keys()].map(i => 2 ** i);
+      console.log(workgroupSizes);
+      for (const workgroupSize of workgroupSizes) {
+        console.log(workgroupSize);
+      
       const memsrcSize = 2 ** 24; // (1M elements)
-      const itemsPerWorkgroup = memsrcSize / WORKGROUP_SIZE;
+      const itemsPerWorkgroup = memsrcSize / workgroupSize;
       const dispatchGeometry = [itemsPerWorkgroup, 1];
       while (
         dispatchGeometry[0] > adapter.limits.maxComputeWorkgroupsPerDimension
@@ -40,7 +48,7 @@
         dispatchGeometry[1] *= 2;
       }
       console.log(`itemsPerWorkgroup: ${itemsPerWorkgroup}
-workgroup size: ${WORKGROUP_SIZE}
+workgroup size: ${workgroupSize}
 maxComputeWGPerDim: ${adapter.limits.maxComputeWorkgroupsPerDimension}
 dispatchGeometry: ${dispatchGeometry}`);
 
@@ -52,16 +60,17 @@ dispatchGeometry: ${dispatchGeometry}`);
       const memcpyModule = device.createShaderModule({
         label: "copy large chunk of memory from memSrc to memDest",
         code: /* wgsl */ `
+                    override wgSize: u32 = 1;
                     /* output */
                     @group(0) @binding(0) var<storage, read_write> memDest: array<u32>;
                     /* input */
                     @group(0) @binding(1) var<storage, read> memSrc: array<u32>;
 
-                    @compute @workgroup_size(${WORKGROUP_SIZE}) fn memcpyKernel(
+                    @compute @workgroup_size(wgSize) fn memcpyKernel(
                       @builtin(global_invocation_id) id: vec3u,
                       @builtin(num_workgroups) nwg: vec3u,
                       @builtin(workgroup_id) wgid: vec3u) {
-                        let i = id.y * nwg.x * ${WORKGROUP_SIZE} + id.x;
+                        let i = id.y * nwg.x * wgSize + id.x;
                         memDest[i] = memSrc[i] + 1;
                     }
                   `,
@@ -72,6 +81,9 @@ dispatchGeometry: ${dispatchGeometry}`);
         layout: "auto",
         compute: {
           module: memcpyModule,
+          constants: {
+            wgSize: workgroupSize,
+          }
         },
       });
 
@@ -115,7 +127,7 @@ dispatchGeometry: ${dispatchGeometry}`);
       });
       memcpyPass.setPipeline(memcpyPipeline);
       memcpyPass.setBindGroup(0, memcpyBindGroup);
-      // TODO handle not evenly divisible by WORKGROUP_SIZE
+      // TODO handle not evenly divisible by wgSize
       memcpyPass.dispatchWorkgroups(...dispatchGeometry);
       memcpyPass.end();
 
@@ -163,11 +175,16 @@ dispatchGeometry: ${dispatchGeometry}`);
         console.log(`Transferred ${bytesTransferred} bytes`);
         console.log(`Bandwidth = ${bytesTransferred / ns} GB/s`);
       });
+    };
 
       function fail(msg) {
         // eslint-disable-next-line no-alert
         alert(msg);
       }
+
+      const plot = Plot.rectY({length: 10000}, Plot.binX({y: "count"}, {x: Math.random})).plot();
+      const div = document.querySelector("#plot");
+      div.append(plot);
     </script>
   </body>
 </html>
