@@ -129,6 +129,11 @@
           const resultBuffer = this.#resultBuffer;
           await resultBuffer.mapAsync(GPUMapMode.READ);
           const times = new BigInt64Array(resultBuffer.getMappedRange());
+          console.log(
+            "Returned timestamps in result buffer:",
+            Number(times[1]),
+            Number(times[0])
+          );
           const duration = Number(times[1] - times[0]);
           resultBuffer.unmap();
           this.#resultBuffers.push(resultBuffer);
@@ -148,7 +153,7 @@
       }
 
       const workgroupSize = 64;
-      const memsrcSize = 2 ** 20;
+      const memsrcSize = 2 ** 24;
       const timingHelper = new TimingHelper(device);
 
       const itemsPerWorkgroup = memsrcSize / workgroupSize;
