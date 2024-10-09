@@ -30,161 +30,163 @@
         fail("Fatal error: Device does not support WebGPU.");
       }
       // [2**0, 2**9)
-      const workgroupSizes = [...Array(9).keys()].map((i) => 2 ** i);
+      const workgroupLimit = 1; // 9;
+      const workgroupSizes = [...Array(workgroupLimit).keys()].map(
+        (i) => 2 ** i
+      );
+      // [2**0, 2**25)
+      const memsrcSizeLimit = 1; // 25;
+      const memsrcSizes = [...Array(memsrcSizeLimit).keys()].map((i) => 2 ** i);
       for (const workgroupSize of workgroupSizes) {
-        console.log("Creating new TimingHelper ...");
-        const timingHelper = new TimingHelper(device);
-        console.log("... of workgroup size", workgroupSize);
+        for (const memsrcSize of memsrcSizes) {
+          const timingHelper = new TimingHelper(device);
 
-        const memsrcSize = 2 ** 24; // (1M elements)
-        const itemsPerWorkgroup = memsrcSize / workgroupSize;
-        const dispatchGeometry = [itemsPerWorkgroup, 1];
-        while (
-          dispatchGeometry[0] > adapter.limits.maxComputeWorkgroupsPerDimension
-        ) {
-          dispatchGeometry[0] /= 2;
-          dispatchGeometry[1] *= 2;
-        }
-        console.log(`itemsPerWorkgroup: ${itemsPerWorkgroup}
-workgroup size: ${workgroupSize}
-maxComputeWGPerDim: ${adapter.limits.maxComputeWorkgroupsPerDimension}
-dispatchGeometry: ${dispatchGeometry}`);
-
-        const memsrc = new Uint32Array(memsrcSize);
-        for (let i = 0; i < memsrc.length; i++) {
-          memsrc[i] = i;
-        }
-
-        const memcpyModule = device.createShaderModule({
-          label: "copy large chunk of memory from memSrc to memDest",
-          code: /* wgsl */ `
-                    override wgSize: u32 = 1;
-                    /* output */
-                    @group(0) @binding(0) var<storage, read_write> memDest: array<u32>;
-                    /* input */
-                    @group(0) @binding(1) var<storage, read> memSrc: array<u32>;
-
-                    @compute @workgroup_size(wgSize) fn memcpyKernel(
-                      @builtin(global_invocation_id) id: vec3u,
-                      @builtin(num_workgroups) nwg: vec3u,
-                      @builtin(workgroup_id) wgid: vec3u) {
-                        let i = id.y * nwg.x * wgSize + id.x;
-                        memDest[i] = memSrc[i] + 1;
-                    }
-                  `,
-        });
-
-        const memcpyPipeline = device.createComputePipeline({
-          label: "memcpy compute pipeline",
-          layout: "auto",
-          compute: {
-            module: memcpyModule,
-            constants: {
-              wgSize: workgroupSize,
-            },
-          },
-        });
-
-        // create buffers on the GPU to hold data
-        // read-only inputs:
-        const memsrcBuffer = device.createBuffer({
-          label: "memory source buffer",
-          size: memsrc.byteLength,
-          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        });
-        device.queue.writeBuffer(memsrcBuffer, 0, memsrc);
-
-        const memdestBuffer = device.createBuffer({
-          label: "memory destination buffer",
-          size: memsrc.byteLength,
-          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
-        });
-
-        const mappableMemdstBuffer = device.createBuffer({
-          label: "mappable memory destination buffer",
-          size: memsrc.byteLength,
-          usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
-        });
-
-        /** Set up bindGroups per compute kernel to tell the shader which buffers to use */
-        const memcpyBindGroup = device.createBindGroup({
-          label: "bindGroup for memcpy kernel",
-          layout: memcpyPipeline.getBindGroupLayout(0),
-          entries: [
-            { binding: 0, resource: { buffer: memdestBuffer } },
-            { binding: 1, resource: { buffer: memsrcBuffer } },
-          ],
-        });
-
-        const encoder = device.createCommandEncoder({
-          label: "memcpy encoder",
-        });
-
-        console.log("Initializing TimingHelper on beginComputePass ...");
-        const memcpyPass = timingHelper.beginComputePass(encoder, {
-          label: "memcpy compute pass",
-        });
-        console.log("... done");
-        memcpyPass.setPipeline(memcpyPipeline);
-        memcpyPass.setBindGroup(0, memcpyBindGroup);
-        // TODO handle not evenly divisible by wgSize
-        console.log("Dispatching ...");
-        memcpyPass.dispatchWorkgroups(...dispatchGeometry);
-        console.log("... done");
-        memcpyPass.end();
-
-        // Encode a command to copy the results to a mappable buffer.
-        // this is (from, to)
-        encoder.copyBufferToBuffer(
-          memdestBuffer,
-          0,
-          mappableMemdstBuffer,
-          0,
-          mappableMemdstBuffer.size
-        );
-
-        // Finish encoding and submit the commands
-        const command_buffer = encoder.finish();
-        console.log("Submitting ...");
-        device.queue.submit([command_buffer]);
-        console.log("... done");
-
-        // Read the results
-        await mappableMemdstBuffer.mapAsync(GPUMapMode.READ);
-        const memdest = new Uint32Array(
-          mappableMemdstBuffer.getMappedRange().slice()
-        );
-        mappableMemdstBuffer.unmap();
-        console.log(`Memdest size: ${memdest.length}`);
-        let errors = 0;
-        for (let i = 0; i < memdest.length; i++) {
-          if (memsrc[i] + 1 != memdest[i]) {
-            if (errors < 5) {
-              console.log(
-                `Error ${errors}: i=${i}, src=${memsrc[i]}, dest=${memdest[i]}`
-              );
-            }
-            errors++;
+          const itemsPerWorkgroup = memsrcSize / workgroupSize;
+          const dispatchGeometry = [itemsPerWorkgroup, 1];
+          while (
+            dispatchGeometry[0] >
+            adapter.limits.maxComputeWorkgroupsPerDimension
+          ) {
+            dispatchGeometry[0] /= 2;
+            dispatchGeometry[1] *= 2;
           }
-        }
-        if (errors > 0) {
-          console.log(`Errors: ${errors}`);
-        } else {
-          console.log("No errors!");
-        }
+          console.log(`itemsPerWorkgroup: ${itemsPerWorkgroup}
+      workgroup size: ${workgroupSize}
+      maxComputeWGPerDim: ${adapter.limits.maxComputeWorkgroupsPerDimension}
+      dispatchGeometry: ${dispatchGeometry}`);
 
-        timingHelper.getResult().then((ns) => {
-          console.log("Timing result", ns);
-          let bytesTransferred = 2 * memdest.byteLength;
-          console.log(`Transferred ${bytesTransferred} bytes`);
-          console.log(`Bandwidth = ${bytesTransferred / ns} GB/s`);
-          data.push({
-            time: ns[0],
-            bytesTransferred: bytesTransferred,
-            bandwidth: bytesTransferred / ns[0],
-            workgroupSize: workgroupSize,
+          const memsrc = new Uint32Array(memsrcSize);
+          for (let i = 0; i < memsrc.length; i++) {
+            memsrc[i] = i;
+          }
+
+          const memcpyModule = device.createShaderModule({
+            label: "copy large chunk of memory from memSrc to memDest",
+            code: /* wgsl */ `
+                          override wgSize: u32 = 1;
+                          /* output */
+                          @group(0) @binding(0) var<storage, read_write> memDest: array<u32>;
+                          /* input */
+                          @group(0) @binding(1) var<storage, read> memSrc: array<u32>;
+
+                          @compute @workgroup_size(wgSize) fn memcpyKernel(
+                            @builtin(global_invocation_id) id: vec3u,
+                            @builtin(num_workgroups) nwg: vec3u,
+                            @builtin(workgroup_id) wgid: vec3u) {
+                              let i = id.y * nwg.x * wgSize + id.x;
+                              memDest[i] = memSrc[i] + 1;
+                          }
+                        `,
           });
-        });
+
+          const memcpyPipeline = device.createComputePipeline({
+            label: "memcpy compute pipeline",
+            layout: "auto",
+            compute: {
+              module: memcpyModule,
+              constants: {
+                wgSize: workgroupSize,
+              },
+            },
+          });
+
+          // create buffers on the GPU to hold data
+          // read-only inputs:
+          const memsrcBuffer = device.createBuffer({
+            label: "memory source buffer",
+            size: memsrc.byteLength,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+          });
+          device.queue.writeBuffer(memsrcBuffer, 0, memsrc);
+
+          const memdestBuffer = device.createBuffer({
+            label: "memory destination buffer",
+            size: memsrc.byteLength,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+          });
+
+          const mappableMemdstBuffer = device.createBuffer({
+            label: "mappable memory destination buffer",
+            size: memsrc.byteLength,
+            usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+          });
+
+          /** Set up bindGroups per compute kernel to tell the shader which buffers to use */
+          const memcpyBindGroup = device.createBindGroup({
+            label: "bindGroup for memcpy kernel",
+            layout: memcpyPipeline.getBindGroupLayout(0),
+            entries: [
+              { binding: 0, resource: { buffer: memdestBuffer } },
+              { binding: 1, resource: { buffer: memsrcBuffer } },
+            ],
+          });
+
+          const encoder = device.createCommandEncoder({
+            label: "memcpy encoder",
+          });
+
+          const memcpyPass = timingHelper.beginComputePass(encoder, {
+            label: "memcpy compute pass",
+          });
+          memcpyPass.setPipeline(memcpyPipeline);
+          memcpyPass.setBindGroup(0, memcpyBindGroup);
+          // TODO handle not evenly divisible by wgSize
+          memcpyPass.dispatchWorkgroups(...dispatchGeometry);
+          memcpyPass.end();
+
+          // Encode a command to copy the results to a mappable buffer.
+          // this is (from, to)
+          encoder.copyBufferToBuffer(
+            memdestBuffer,
+            0,
+            mappableMemdstBuffer,
+            0,
+            mappableMemdstBuffer.size
+          );
+
+          // Finish encoding and submit the commands
+          const command_buffer = encoder.finish();
+          device.queue.submit([command_buffer]);
+
+          // Read the results
+          await mappableMemdstBuffer.mapAsync(GPUMapMode.READ);
+          const memdest = new Uint32Array(
+            mappableMemdstBuffer.getMappedRange().slice()
+          );
+          mappableMemdstBuffer.unmap();
+          let errors = 0;
+          for (let i = 0; i < memdest.length; i++) {
+            if (memsrc[i] + 1 != memdest[i]) {
+              if (errors < 5) {
+                console.log(
+                  `Error ${errors}: i=${i}, src=${memsrc[i]}, dest=${memdest[i]}`
+                );
+              }
+              errors++;
+            }
+          }
+          if (errors > 0) {
+            console.log(`Memdest size: ${memdest.length} | Errors: ${errors}`);
+          } else {
+            console.log(`Memdest size: ${memdest.length} | No errors!`);
+          }
+
+          timingHelper.getResult().then((ns) => {
+            let bytesTransferred = 2 * memdest.byteLength;
+            console.log(
+              `Timing result: ${ns}; transferred ${bytesTransferred} bytes; bandwidth = ${
+                bytesTransferred / ns
+              } GB/s`
+            );
+            data.push({
+              time: ns[0],
+              bytesTransferred: bytesTransferred,
+              memsrcSize: memsrcSize,
+              bandwidth: bytesTransferred / ns[0],
+              workgroupSize: workgroupSize,
+            });
+          });
+        }
       }
       console.log(data);
 
@@ -194,7 +196,14 @@ dispatchGeometry: ${dispatchGeometry}`);
       }
 
       const plot = Plot.plot({
-        marks: [Plot.lineY(data, { x: "workgroupSize", y: "bandwidth" })],
+        color: { legend: true },
+        marks: [
+          Plot.lineY(data, {
+            x: "memsrcSize",
+            y: "bandwidth",
+            stroke: "workgroupSize",
+          }),
+        ],
       });
       const div = document.querySelector("#plot");
       div.append(plot);
