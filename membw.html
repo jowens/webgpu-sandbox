@@ -8,10 +8,7 @@
 
   <body>
     <div id="plot"></div>
-    <script
-      type="text/javascript"
-      src="./webgpufundamentals-timing.js"
-    ></script>
+    <script src="./webgpufundamentals-timing.js"></script>
     <script type="module">
       // for uniform handling
       import {
@@ -20,6 +17,8 @@
       } from "https://greggman.github.io/webgpu-utils/dist/1.x/webgpu-utils.module.js";
 
       import * as Plot from "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6/+esm";
+
+      const data = [];
 
       const adapter = await navigator.gpu?.requestAdapter();
       const canTimestamp = adapter.features.has("timestamp-query");
@@ -30,12 +29,10 @@
       if (!device) {
         fail("Fatal error: Device does not support WebGPU.");
       }
-      const timingHelper = new TimingHelper(device);
-
-      // [2**0, 2**11)
-      const workgroupSizes = [...Array(11).keys()].map(i => 2 ** i);
-      console.log(workgroupSizes);
+      // [2**0, 2**9)
+      const workgroupSizes = [...Array(9).keys()].map(i => 2 ** i);
       for (const workgroupSize of workgroupSizes) {
+        const timingHelper = new TimingHelper(device);
         console.log(workgroupSize);
       
       const memsrcSize = 2 ** 24; // (1M elements)
@@ -174,15 +171,21 @@ dispatchGeometry: ${dispatchGeometry}`);
         let bytesTransferred = 2 * memdest.byteLength;
         console.log(`Transferred ${bytesTransferred} bytes`);
         console.log(`Bandwidth = ${bytesTransferred / ns} GB/s`);
+        data.push({time: ns[0], bytesTransferred: bytesTransferred, bandwidth: bytesTransferred / ns[0], workgroupSize: workgroupSize});
       });
     };
+    console.log(data);
 
       function fail(msg) {
         // eslint-disable-next-line no-alert
         alert(msg);
       }
 
-      const plot = Plot.rectY({length: 10000}, Plot.binX({y: "count"}, {x: Math.random})).plot();
+const plot=      Plot.plot({
+      marks: [
+        Plot.lineY(data, {x: "workgroupSize", y: "bandwidth"})
+      ]
+    })
       const div = document.querySelector("#plot");
       div.append(plot);
     </script>
