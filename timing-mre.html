@@ -177,17 +177,16 @@
       const memcpyModule = device.createShaderModule({
         label: "copy large chunk of memory from memSrc to memDest",
         code: /* wgsl */ `
-                          override wgSize: u32 = 1;
                           /* output */
                           @group(0) @binding(0) var<storage, read_write> memDest: array<u32>;
                           /* input */
                           @group(0) @binding(1) var<storage, read> memSrc: array<u32>;
 
-                          @compute @workgroup_size(wgSize) fn memcpyKernel(
+                          @compute @workgroup_size(${workgroupSize}) fn memcpyKernel(
                             @builtin(global_invocation_id) id: vec3u,
                             @builtin(num_workgroups) nwg: vec3u,
                             @builtin(workgroup_id) wgid: vec3u) {
-                              let i = id.y * nwg.x * wgSize + id.x;
+                              let i = id.y * nwg.x * ${workgroupSize} + id.x;
                               memDest[i] = memSrc[i] + 1;
                           }
                         `,
@@ -198,9 +197,6 @@
         layout: "auto",
         compute: {
           module: memcpyModule,
-          constants: {
-            wgSize: workgroupSize,
-          },
         },
       });
 
