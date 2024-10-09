@@ -29,14 +29,11 @@
       if (!device) {
         fail("Fatal error: Device does not support WebGPU.");
       }
-      // [2**0, 2**9)
-      const workgroupLimit = 1; // 9;
-      const workgroupSizes = [...Array(workgroupLimit).keys()].map(
-        (i) => 2 ** i
-      );
-      // [2**0, 2**25)
-      const memsrcSizeLimit = 1; // 25;
-      const memsrcSizes = [...Array(memsrcSizeLimit).keys()].map((i) => 2 ** i);
+
+      const range = (min, max) => [...Array(max - min + 1).keys()].map(i => i + min);
+
+      const workgroupSizes = range(0,7).map((i) => 2 ** i);
+      const memsrcSizes = range(10,25).map((i) => 2 ** i);
       for (const workgroupSize of workgroupSizes) {
         for (const memsrcSize of memsrcSizes) {
           const timingHelper = new TimingHelper(device);
@@ -63,17 +60,16 @@
           const memcpyModule = device.createShaderModule({
             label: "copy large chunk of memory from memSrc to memDest",
             code: /* wgsl */ `
-                          override wgSize: u32 = 1;
                           /* output */
                           @group(0) @binding(0) var<storage, read_write> memDest: array<u32>;
                           /* input */
                           @group(0) @binding(1) var<storage, read> memSrc: array<u32>;
 
-                          @compute @workgroup_size(wgSize) fn memcpyKernel(
+                          @compute @workgroup_size(${workgroupSize}) fn memcpyKernel(
                             @builtin(global_invocation_id) id: vec3u,
                             @builtin(num_workgroups) nwg: vec3u,
                             @builtin(workgroup_id) wgid: vec3u) {
-                              let i = id.y * nwg.x * wgSize + id.x;
+                              let i = id.y * nwg.x * ${workgroupSize} + id.x;
                               memDest[i] = memSrc[i] + 1;
                           }
                         `,
@@ -84,9 +80,6 @@
             layout: "auto",
             compute: {
               module: memcpyModule,
-              constants: {
-                wgSize: workgroupSize,
-              },
             },
           });
 
@@ -179,10 +172,10 @@
               } GB/s`
             );
             data.push({
-              time: ns[0],
+              time: ns,
               bytesTransferred: bytesTransferred,
               memsrcSize: memsrcSize,
-              bandwidth: bytesTransferred / ns[0],
+              bandwidth: bytesTransferred / ns,
               workgroupSize: workgroupSize,
             });
           });
@@ -196,14 +189,17 @@
       }
 
       const plot = Plot.plot({
-        color: { legend: true },
+        color: { type: "ordinal", legend: true },
         marks: [
           Plot.lineY(data, {
             x: "memsrcSize",
             y: "bandwidth",
             stroke: "workgroupSize",
           }),
+          Plot.text(data, Plot.selectLast({x: "memsrcSize", y: "bandwidth", z: "workgroupSize", text: "workgroupSize", textAnchor: "start", dx: 3}))
         ],
+        x: {type: "log", label: "Copied array size (B)"},
+        y: {type: "log", label: "Achieved bandwidth (GB/s)"},
       });
       const div = document.querySelector("#plot");
       div.append(plot);
