@@ -156,15 +156,15 @@
       const memsrcSize = 2 ** 24;
       const timingHelper = new TimingHelper(device);
 
-      const itemsPerWorkgroup = memsrcSize / workgroupSize;
-      const dispatchGeometry = [itemsPerWorkgroup, 1];
+      const workgroupCount = memsrcSize / workgroupSize;
+      const dispatchGeometry = [workgroupCount, 1];
       while (
         dispatchGeometry[0] > adapter.limits.maxComputeWorkgroupsPerDimension
       ) {
         dispatchGeometry[0] /= 2;
         dispatchGeometry[1] *= 2;
       }
-      console.log(`itemsPerWorkgroup: ${itemsPerWorkgroup}
+      console.log(`workgroup count: ${workgroupCount}
       workgroup size: ${workgroupSize}
       maxComputeWGPerDim: ${adapter.limits.maxComputeWorkgroupsPerDimension}
       dispatchGeometry: ${dispatchGeometry}`);
