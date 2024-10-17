@@ -152,6 +152,12 @@
         fail("Fatal error: Device does not support WebGPU.");
       }
 
+      if (!canTimestamp) {
+        fail(
+          'Fatal error: Device does not support WebGPU timestamp query (`adapter.features.has("timestamp-query")` is false).'
+        );
+      }
+
       const workgroupSize = 64;
       const memsrcSize = 2 ** 24;
       const timingHelper = new TimingHelper(device);
