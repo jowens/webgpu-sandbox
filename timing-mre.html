@@ -263,6 +263,8 @@
       // Finish encoding and submit the commands
       const command_buffer = encoder.finish();
       device.queue.submit([command_buffer]);
+      // kbr@ suggested the following line, which had no effect on M3 [23 Oct 2024]
+      // await device.queue.onSubmittedWorkDone();
 
       // Read the results
       await mappableMemdstBuffer.mapAsync(GPUMapMode.READ);
