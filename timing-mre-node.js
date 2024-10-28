@@ -145,7 +145,6 @@ async function main() {
 
   const workgroupSize = 64;
   const memsrcSize = 2 ** 24;
-  const timingHelper = new TimingHelper(device);
 
   const workgroupCount = memsrcSize / workgroupSize;
   const dispatchGeometry = [workgroupCount, 1];
@@ -222,64 +221,57 @@ async function main() {
     ],
   });
 
-  const encoder = device.createCommandEncoder({
-    label: "memcpy encoder",
-  });
+  const timingHelper = new TimingHelper(device);
+  for (var i = 0; i < 250; i++) {
+    const encoder = device.createCommandEncoder({
+      label: "memcpy encoder",
+    });
+    const memcpyPass = encoder.beginComputePass(encoder, {
+      label: "memcpy compute pass",
+    });
+    memcpyPass.setPipeline(memcpyPipeline);
+    memcpyPass.setBindGroup(0, memcpyBindGroup);
+    // TODO handle not evenly divisible by wgSize
+    memcpyPass.dispatchWorkgroups(...dispatchGeometry);
+    memcpyPass.end();
 
-  const memcpyPass = timingHelper.beginComputePass(encoder, {
-    label: "memcpy compute pass",
-  });
-  memcpyPass.setPipeline(memcpyPipeline);
-  memcpyPass.setBindGroup(0, memcpyBindGroup);
-  // TODO handle not evenly divisible by wgSize
-  memcpyPass.dispatchWorkgroups(...dispatchGeometry);
-  memcpyPass.end();
+    // Encode a command to copy the results to a mappable buffer.
+    // this is (from, to)
+    encoder.copyBufferToBuffer(
+      memdestBuffer,
+      0,
+      mappableMemdstBuffer,
+      0,
+      mappableMemdstBuffer.size
+    );
 
-  // Encode a command to copy the results to a mappable buffer.
-  // this is (from, to)
-  encoder.copyBufferToBuffer(
-    memdestBuffer,
-    0,
-    mappableMemdstBuffer,
-    0,
-    mappableMemdstBuffer.size
-  );
+    // Finish encoding and submit the commands
+    const command_buffer = encoder.finish();
+    device.queue.submit([command_buffer]);
 
-  // Finish encoding and submit the commands
-  const command_buffer = encoder.finish();
-  device.queue.submit([command_buffer]);
-
-  // Read the results
-  await mappableMemdstBuffer.mapAsync(GPUMapMode.READ);
-  const memdest = new Uint32Array(
-    mappableMemdstBuffer.getMappedRange().slice()
-  );
-  mappableMemdstBuffer.unmap();
-  let errors = 0;
-  for (let i = 0; i < memdest.length; i++) {
-    if (memsrc[i] + 1 != memdest[i]) {
-      if (errors < 5) {
-        console.log(
-          `Error ${errors}: i=${i}, src=${memsrc[i]}, dest=${memdest[i]}`
-        );
+    // Read the results
+    await mappableMemdstBuffer.mapAsync(GPUMapMode.READ);
+    const memdest = new Uint32Array(
+      mappableMemdstBuffer.getMappedRange().slice()
+    );
+    mappableMemdstBuffer.unmap();
+    let errors = 0;
+    for (let i = 0; i < memdest.length; i++) {
+      if (memsrc[i] + 1 != memdest[i]) {
+        if (errors < 5) {
+          console.log(
+            `Error ${errors}: i=${i}, src=${memsrc[i]}, dest=${memdest[i]}`
+          );
+        }
+        errors++;
       }
-      errors++;
+    }
+    if (errors > 0) {
+      console.log(`${i} | Memdest size: ${memdest.length} | Errors: ${errors}`);
+    } else {
+      console.log(`${i} | Memdest size: ${memdest.length} | No errors!`);
     }
   }
-  if (errors > 0) {
-    console.log(`Memdest size: ${memdest.length} | Errors: ${errors}`);
-  } else {
-    console.log(`Memdest size: ${memdest.length} | No errors!`);
-  }
-
-  timingHelper.getResult().then((ns) => {
-    let bytesTransferred = 2 * memdest.byteLength;
-    console.log(
-      `Timing result: ${ns} ns; transferred ${bytesTransferred} bytes; bandwidth = ${
-        bytesTransferred / ns
-      } GB/s`
-    );
-  });
 }
 main();
 
