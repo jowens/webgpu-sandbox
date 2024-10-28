@@ -33,6 +33,8 @@ class TimingHelper {
         size: this.#querySet.count * 8,
         usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC,
       });
+    } else {
+      console.log("TimingHelper(): cannot timestamp");
     }
   }
 
@@ -121,6 +123,7 @@ class TimingHelper {
 
   async getResult() {
     if (!this.#canTimestamp) {
+      console.log("getResult(): Cannot timestamp");
       return 0;
     }
     assert(this.#state === "wait for result", "must call resolveTiming");
@@ -132,6 +135,7 @@ class TimingHelper {
     /* I need to read about functional programming in JS to make below pretty */
     const durations = [];
     for (var idx = 0; idx < times.length; idx += 2) {
+      console.log("Timestamps:", Number(times[idx + 1]), Number(times[idx]));
       durations.push(Number(times[idx + 1] - times[idx]));
     }
     resultBuffer.unmap();
