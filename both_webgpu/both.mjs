@@ -1,3 +1,5 @@
+import { greeting } from "./greeting.mjs";
+
 async function getDeviceAndAdapter(navigator) {
   const adapter = await navigator.gpu.requestAdapter();
   const hasSubgroups = adapter.features.has("subgroups");
@@ -26,6 +28,7 @@ async function main(navigator) {
   } else {
     console.log("  I'm probably running in a web browser.");
   }
+  greeting();
 
   const workgroupSize = 64;
   const memsrcSize = 2 ** 24;
