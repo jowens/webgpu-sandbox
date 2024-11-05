@@ -71,7 +71,7 @@ async function loop(frames, waitingForKeyboard = true) {
       waitingForKeyboard = false;
       break;
     default:
-      if (spin == false) {
+      if (waitingForKeyboard == false) {
         const r = Math.sin(Date.now() / 1000) * 127 + 128;
         const g = Math.sin(Date.now() / 1000 + 2) * 127 + 128;
         const b = Math.sin(Date.now() / 1000 + 4) * 127 + 128;
