@@ -1,4 +1,4 @@
-async function main(navigator) {
+async function getDeviceAndAdapter(navigator) {
   const adapter = await navigator.gpu.requestAdapter();
   const hasSubgroups = adapter.features.has("subgroups");
   const canTimestamp = adapter.features.has("timestamp-query");
@@ -8,13 +8,23 @@ async function main(navigator) {
       ...(hasSubgroups ? ["subgroups"] : []),
     ],
   });
+  return {
+    adapter: adapter,
+    device: device,
+  };
+}
+
+async function main(navigator) {
+  const { adapter, device } = await getDeviceAndAdapter(navigator);
 
   if (!device) {
-    fail("Fatal error: Device does not support WebGPU.");
+    throw new Error("Fatal error: Device does not support WebGPU.");
   }
   console.log("I am main! (WebGPU)");
   if (typeof process !== "undefined") {
     console.log("  Process release name:", process.release.name);
+  } else {
+    console.log("  I'm probably running in a web browser.");
   }
 
   const workgroupSize = 64;
@@ -121,10 +131,10 @@ async function main(navigator) {
   // Finish encoding and submit the commands
   const commandBuffer = encoder.finish();
   await device.queue.onSubmittedWorkDone();
-  const passStartTime = performance.now();
+  const passStartTimeMS = performance.now();
   device.queue.submit([commandBuffer]);
   await device.queue.onSubmittedWorkDone();
-  const passEndTime = performance.now();
+  const passEndTimeMS = performance.now();
 
   // Read the results
   await mappableMemdstBuffer.mapAsync(GPUMapMode.READ);
@@ -150,11 +160,11 @@ async function main(navigator) {
   }
 
   let bytesTransferred = 2 * memdest.byteLength;
-  let ns = passEndTime - passStartTime;
+  let ns = (passEndTimeMS - passStartTimeMS) * 1000000.0;
   console.log(
     `Timing result: ${ns} ns; transferred ${bytesTransferred} bytes; bandwidth = ${
       bytesTransferred / ns
     } GB/s`
   );
 }
-export { main };
+export { main, getDeviceAndAdapter };
