@@ -13,6 +13,9 @@ async function main(navigator) {
     fail("Fatal error: Device does not support WebGPU.");
   }
   console.log("I am main! (WebGPU)");
+  if (typeof process !== "undefined") {
+    console.log("  Process release name:", process.release.name);
+  }
 
   const workgroupSize = 64;
   const memsrcSize = 2 ** 24;
