@@ -1,4 +1,4 @@
-import { greeting } from "./greeting.mjs";
+import { platform } from "./platform.mjs";
 
 async function getDeviceAndAdapter(navigator) {
   const adapter = await navigator.gpu.requestAdapter();
@@ -22,13 +22,7 @@ async function main(navigator) {
   if (!device) {
     throw new Error("Fatal error: Device does not support WebGPU.");
   }
-  console.log("I am main! (WebGPU)");
-  if (typeof process !== "undefined") {
-    console.log("  Process release name:", process.release.name);
-  } else {
-    console.log("  I'm probably running in a web browser.");
-  }
-  greeting();
+  console.log(`WebGPU is ${platform(navigator)}`);
 
   const data = [];
   for (const workgroupSize of [32, 64, 128]) {
