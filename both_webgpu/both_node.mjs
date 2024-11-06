@@ -46,4 +46,4 @@ plot.setAttributeNS(
   "http://www.w3.org/1999/xlink"
 );
 
-process.stdout.write(plot.outerHTML);
+// process.stdout.write(plot.outerHTML);
