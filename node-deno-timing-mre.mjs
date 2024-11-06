@@ -135,7 +135,13 @@ async function main(navigator) {
   memcpyPass.dispatchWorkgroups(...dispatchGeometry);
   memcpyPass.end();
 
-  encoder.resolveQuerySet(querySet, 0, 2 /*querySet.count*/, resolveBuffer, 0);
+  encoder.resolveQuerySet(
+    querySet,
+    0,
+    /* querySet.count */ 2,
+    resolveBuffer,
+    0
+  );
 
   if (resultBuffer.mapState === "unmapped") {
     encoder.copyBufferToBuffer(
@@ -185,22 +191,20 @@ async function main(navigator) {
     console.log(`Memdest size: ${memdest.length} | No errors!`);
   }
 
-  let ns;
   if (canTimestamp && resultBuffer.mapState === "unmapped") {
     resultBuffer.mapAsync(GPUMapMode.READ).then(() => {
       const times = new BigInt64Array(resultBuffer.getMappedRange());
-      ns = Number(times[1] - times[0]);
-      console.log(times[0], times[1], ns);
+      let ns = Number(times[1] - times[0]);
+      console.log("Timing raw data:", times[0], times[1], ns);
       resultBuffer.unmap();
+      let bytesTransferred = 2 * memdest.byteLength;
+      console.log(
+        `Timing result: ${ns} ns; transferred ${bytesTransferred} bytes; bandwidth = ${
+          bytesTransferred / ns
+        } GB/s`
+      );
     });
   }
-
-  let bytesTransferred = 2 * memdest.byteLength;
-  console.log(
-    `Timing result: ${ns} ns; transferred ${bytesTransferred} bytes; bandwidth = ${
-      bytesTransferred / ns
-    } GB/s`
-  );
 
   function fail(msg) {
     // eslint-disable-next-line no-alert
