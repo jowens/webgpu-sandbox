@@ -100,7 +100,7 @@ async function main(navigator) {
   });
 
   const timestampWrites = {
-    querySet,
+    querySet: querySet,
     beginningOfPassWriteIndex: 0, // Write timestamp in index 0 when pass begins.
     endOfPassWriteIndex: 1, // Write timestamp in index 1 when pass ends.
   };
@@ -119,15 +119,17 @@ async function main(navigator) {
     usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
   });
 
-  const memcpyPass = encoder.beginComputePass(timestampWrites);
-  const oldMemcpyPassDescriptor = {
+  const memcpyPassDescriptor = {
     label: "memcpy compute pass",
     timestampWrites: {
-      querySet,
+      querySet: querySet,
       beginningOfPassWriteIndex: 0,
       endOfPassWriteIndex: 1,
     },
   };
+  const memcpyPass = encoder.beginComputePass({
+    timestampWrites: timestampWrites,
+  }); // memcpyPassDescriptor); //timestampWrites);
 
   memcpyPass.setPipeline(memcpyPipeline);
   memcpyPass.setBindGroup(0, memcpyBindGroup);
