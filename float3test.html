@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Float 3 Adds Test</title>
+  </head>
+
+  <body>
+    <script type="module">
+      const a = 0.7221859097480774;
+      const b = 0.1175905168056488;
+      const c = -0.8397552371025085;
+      const ar = Math.fround(a);
+      const br = Math.fround(b);
+      const cr = Math.fround(c);
+      console.log("a b c", a, b, c);
+      console.log("a+b+c", a + b + c);
+      console.log("a+(b+c)", a + (b + c));
+      console.log("ar+br+cr", ar + br + cr);
+      console.log("ar+(br+cr)", ar + (br + cr));
+
+      let f32a = new Float32Array([
+        0.7221859097480774, 0.1175905168056488, -0.8397552371025085,
+      ]);
+      console.log("f32a: a+b+c", f32a[0] + f32a[1] + f32a[2]);
+
+      const sm = 0.000001;
+      const lg = 1000000;
+      console.log("sm + lg", sm + lg);
+      const smr = Math.fround(sm);
+      const lgr = Math.fround(lg);
+      console.log("smr + lgr", smr + lgr);
+      let smlg = new Float32Array([sm, lg]);
+      console.log("f32: sm + lg", smlg[0] + smlg[1]);
+    </script>
+  </body>
+</html>
