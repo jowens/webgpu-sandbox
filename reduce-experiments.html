@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Experiments with Reduce</title>
+  </head>
+
+  <body>
+    <script type="module">
+      const adapter = await navigator.gpu?.requestAdapter();
+      const canTimestamp = adapter.features.has("timestamp-query");
+      const hasSubgroups = adapter.features.has("subgroups");
+      const device = await adapter?.requestDevice({
+        requiredFeatures: [
+          ...(canTimestamp ? ["timestamp-query"] : []),
+          ...(hasSubgroups ? ["subgroups"] : []),
+        ],
+      });
+
+      if (!device) {
+        fail("Fatal error: Device does not support WebGPU.");
+      }
+
+      if (!canTimestamp) {
+        fail(
+          'Fatal error: Device does not support WebGPU timestamp query (`adapter.features.has("timestamp-query")` is false).'
+        );
+      }
+
+      const Datatype32Array = Uint32Array;
+
+      const workgroupSize = 128;
+      const memsrcSize = 256;
+      const workgroupCount = memsrcSize / workgroupSize;
+
+      const dispatchGeometry = [workgroupCount, 1];
+      while (
+        dispatchGeometry[0] > adapter.limits.maxComputeWorkgroupsPerDimension
+      ) {
+        dispatchGeometry[0] /= 2;
+        dispatchGeometry[1] *= 2;
+      }
+      console.log(`workgroup count: ${workgroupCount}
+      workgroup size: ${workgroupSize}
+      maxComputeWGPerDim: ${adapter.limits.maxComputeWorkgroupsPerDimension}
+      dispatchGeometry: ${dispatchGeometry}`);
+
+      const memsrc = new Datatype32Array(memsrcSize);
+      const referenceOutput = new Datatype32Array(memsrcSize);
+      for (let i = 0; i < memsrc.length; i++) {
+        let wgid = Math.floor(i / workgroupSize);
+        memsrc[i] = i;
+        referenceOutput[wgid] += i;
+      }
+
+      import { reduceWGSL } from "./reduce-experiments.js";
+
+      const reduceModule = device.createShaderModule({
+        label: "reduce functionality test",
+        code: reduceWGSL,
+      });
+
+      const reducePipeline = device.createComputePipeline({
+        label: "reduce compute pipeline",
+        layout: "auto",
+        compute: {
+          module: reduceModule,
+        },
+      });
+
+      // create buffers on the GPU to hold data
+      // read-only inputs:
+      const memsrcBuffer = device.createBuffer({
+        label: "memory source buffer",
+        size: memsrc.byteLength,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      });
+      device.queue.writeBuffer(memsrcBuffer, 0, memsrc);
+
+      const memdestSize = memsrc.byteLength / workgroupSize;
+
+      const memdestBuffer = device.createBuffer({
+        label: "memory destination buffer",
+        size: memdestSize,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+      });
+
+      const mappableMemdstBuffer = device.createBuffer({
+        label: "mappable memory destination buffer",
+        size: memdestSize,
+        usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+      });
+
+      /** Set up bindGroups per compute kernel to tell the shader which buffers to use */
+      const reduceBindGroup = device.createBindGroup({
+        label: "bindGroup for reduce kernel",
+        layout: reducePipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: memdestBuffer } },
+          { binding: 1, resource: { buffer: memsrcBuffer } },
+        ],
+      });
+
+      const encoder = device.createCommandEncoder({
+        label: "reduce encoder",
+      });
+
+      const reducePass = encoder.beginComputePass(encoder, {
+        label: "reduce compute pass",
+      });
+      reducePass.setPipeline(reducePipeline);
+      reducePass.setBindGroup(0, reduceBindGroup);
+      reducePass.dispatchWorkgroups(...dispatchGeometry);
+      reducePass.end();
+
+      encoder.copyBufferToBuffer(
+        memdestBuffer,
+        0,
+        mappableMemdstBuffer,
+        0,
+        mappableMemdstBuffer.size
+      );
+
+      const command_buffer = encoder.finish();
+      device.queue.submit([command_buffer]);
+
+      // Read the results
+      await mappableMemdstBuffer.mapAsync(GPUMapMode.READ);
+      const memdest = new Datatype32Array(
+        mappableMemdstBuffer.getMappedRange().slice()
+      );
+      mappableMemdstBuffer.unmap();
+      let errors = 0;
+      for (let i = 0; i < memdest.length; i++) {
+        if (memdest[i] != referenceOutput[i]) {
+          if (errors < 5) {
+            console.log(
+              `Error ${errors}: i=${i}, src=${memsrc[i]}, dest=${memdest[i]}, expected=${referenceOutput[i]}`
+            );
+          }
+          errors++;
+        }
+      }
+      if (errors > 0) {
+        console.log(`Memdest size: ${memdest.length} | Errors: ${errors}`);
+      } else {
+        console.log(`Memdest size: ${memdest.length} | No errors!`);
+      }
+      console.log("Input", memsrc, "Output", memdest);
+
+      function fail(msg) {
+        // eslint-disable-next-line no-alert
+        alert(msg);
+      }
+    </script>
+  </body>
+</html>
