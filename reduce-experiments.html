@@ -42,23 +42,26 @@
         dispatchGeometry[1] *= 2;
       }
       console.log(`workgroup count: ${workgroupCount}
-      workgroup size: ${workgroupSize}
-      maxComputeWGPerDim: ${adapter.limits.maxComputeWorkgroupsPerDimension}
-      dispatchGeometry: ${dispatchGeometry}`);
+            workgroup size: ${workgroupSize}
+            maxComputeWGPerDim: ${adapter.limits.maxComputeWorkgroupsPerDimension}
+            dispatchGeometry: ${dispatchGeometry}`);
 
       const memsrc = new Datatype32Array(memsrcSize);
       const referenceOutput = new Datatype32Array(memsrcSize);
       for (let i = 0; i < memsrc.length; i++) {
         let wgid = Math.floor(i / workgroupSize);
         memsrc[i] = i;
-        referenceOutput[wgid] += i;
+        referenceOutput[wgid] += memsrc[i];
       }
 
       import { reduceWGSL } from "./reduce-experiments.js";
 
       const reduceModule = device.createShaderModule({
         label: "reduce functionality test",
-        code: reduceWGSL,
+        code: reduceWGSL({
+          workgroupSize,
+          MIN_SUBGROUP_SIZE: device.adapterInfo.subgroupMinSize,
+        }),
       });
 
       const reducePipeline = device.createComputePipeline({
